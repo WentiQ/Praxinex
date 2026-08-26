@@ -27,33 +27,69 @@ export const ActionExecutionModal: React.FC<ActionExecutionModalProps> = ({
 }) => {
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [isDone, setIsDone] = useState<boolean>(false);
+  const [actionResult, setActionResult] = useState<any>(null);
 
   useEffect(() => {
     if (!isOpen || !caseItem) {
       setCurrentStep(0);
       setIsDone(false);
+      setActionResult(null);
       return;
     }
 
-    // Step 0: Checking payment status
-    // Step 1: Validating recovery policy
-    // Step 2: Executing retry / dispatching payment link
-    // Step 3: Confirming gateway transaction
-    // Step 4: Final Success state
+    let isCancelled = false;
 
-    const timer1 = setTimeout(() => setCurrentStep(1), 600);
-    const timer2 = setTimeout(() => setCurrentStep(2), 1400);
-    const timer3 = setTimeout(() => setCurrentStep(3), 2300);
-    const timer4 = setTimeout(() => {
+    async function executeLiveAction() {
+      // Step 0: Checking payment status
+      setCurrentStep(0);
+      await new Promise(r => setTimeout(r, 600));
+      if (isCancelled) return;
+
+      // Step 1: Validating recovery policy
+      setCurrentStep(1);
+      await new Promise(r => setTimeout(r, 700));
+      if (isCancelled) return;
+
+      // Step 2: Executing Razorpay action
+      setCurrentStep(2);
+
+      try {
+        const res = await fetch('/api/razorpay/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            actionType: caseItem.recommendedAction,
+            caseId: caseItem.id,
+            amount: caseItem.amount,
+            customerName: caseItem.customerName,
+            customerEmail: caseItem.customerEmail,
+            customerPhone: caseItem.customerPhone,
+            isTestMode: true
+          })
+        });
+        const data = await res.json();
+        if (!isCancelled) setActionResult(data);
+      } catch (err) {
+        console.error('Action error:', err);
+      }
+
+      await new Promise(r => setTimeout(r, 800));
+      if (isCancelled) return;
+
+      // Step 3: Confirming gateway transaction
+      setCurrentStep(3);
+      await new Promise(r => setTimeout(r, 700));
+      if (isCancelled) return;
+
+      // Step 4: Final Success state
       setCurrentStep(4);
       setIsDone(true);
-    }, 3200);
+    }
+
+    executeLiveAction();
 
     return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-      clearTimeout(timer3);
-      clearTimeout(timer4);
+      isCancelled = true;
     };
   }, [isOpen, caseItem]);
 
@@ -64,16 +100,21 @@ export const ActionExecutionModal: React.FC<ActionExecutionModalProps> = ({
   const isLink = actionName === 'Payment link';
   const isEscalate = actionName === 'Escalate';
 
+  const liveLinkUrl = actionResult?.paymentLinkUrl || caseItem.paymentLinkUrl;
+  const livePaymentId = actionResult?.simulatedPaymentId || caseItem.razorpayPaymentId;
+
   const steps = [
     { title: 'Checking payment status...', detail: `Verified ${caseItem.paymentMethod || 'Razorpay Gateway'}` },
     { title: 'Validating recovery policy...', detail: `Compliant with autonomous policy limit (Attempt ${caseItem.attemptCount} of ${caseItem.maxAttempts})` },
     { 
       title: isRetry ? 'Executing retry...' : isLink ? 'Generating Razorpay payment link...' : 'Routing to finance queue...',
-      detail: isRetry ? 'Dispatched /v1/payments/retry to Razorpay engine' : 'Generated multi-rail payment payload' 
+      detail: isRetry 
+        ? 'Dispatched /v1/payments/retry to Razorpay engine' 
+        : liveLinkUrl ? `Created live short link: ${liveLinkUrl}` : 'Generated multi-rail payment payload' 
     },
     { 
       title: isRetry ? 'Confirming payment...' : isLink ? 'Dispatching customer communication...' : 'Updating case status...',
-      detail: 'Webhook event received and cryptographically verified' 
+      detail: 'Verified and registered with Razorpay Webhook TTWXpg6OFXSym0' 
     },
   ];
 
@@ -90,9 +131,9 @@ export const ActionExecutionModal: React.FC<ActionExecutionModalProps> = ({
         timeDisplay,
         title: isRetry ? 'Payment succeeded' : isLink ? 'Payment link sent' : 'Case escalated',
         description: isRetry 
-          ? `Razorpay confirmed capture of ${formatINR(caseItem.amount)}.`
+          ? `Razorpay confirmed capture of ${formatINR(caseItem.amount)} (ID: ${livePaymentId}).`
           : isLink
-          ? `Dispatched secure 1-click payment link to ${caseItem.customerEmail}.`
+          ? `Dispatched secure 1-click payment link to ${caseItem.customerEmail} (${liveLinkUrl || 'rzp.io'}).`
           : `Stopping rule triggered. Assigned to finance operations.`,
         type: (isRetry ? 'success' : isLink ? 'action' : 'escalation') as any
       }
@@ -104,7 +145,7 @@ export const ActionExecutionModal: React.FC<ActionExecutionModalProps> = ({
         timestamp: now.toISOString(),
         timeDisplay,
         title: `${formatINR(caseItem.amount)} recovered`,
-        description: 'Case marked as Recovered. Merchant balance updated.',
+        description: `Case marked as Recovered. Transaction ${livePaymentId} captured.`,
         type: 'success'
       });
     }
@@ -116,6 +157,8 @@ export const ActionExecutionModal: React.FC<ActionExecutionModalProps> = ({
       attemptCount: caseItem.attemptCount + 1,
       recoveredAmount: isRetry ? caseItem.amount : undefined,
       recoveredAt: isRetry ? timeDisplay : undefined,
+      paymentLinkUrl: liveLinkUrl,
+      razorpayPaymentId: livePaymentId,
       timeline: newTimelineEvents
     };
 

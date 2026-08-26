@@ -178,9 +178,16 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
                       {/* Customer */}
                       <td className="py-3.5 px-4 font-medium text-[#171717]">
                         <div>
-                          <span className="font-semibold text-neutral-900 group-hover:text-black">
-                            {c.customerName}
-                          </span>
+                          <div className="flex items-center space-x-1.5">
+                            <span className="font-semibold text-neutral-900 group-hover:text-black">
+                              {c.customerName}
+                            </span>
+                            {c.paymentLinkUrl && (
+                              <span className="text-[9px] font-mono px-1 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded">
+                                Live Link
+                              </span>
+                            )}
+                          </div>
                           <span className="block text-[11px] text-[#737373] font-normal">
                             {c.customerEmail}
                           </span>

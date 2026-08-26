@@ -3,9 +3,9 @@ import { RecoveryCase, ActivityEvent, RecoveryPolicy, MerchantProfile, PaymentRe
 export const INITIAL_MERCHANT: MerchantProfile = {
   id: 'mer_acme_8921',
   name: 'Acme Technologies Pvt Ltd',
-  email: 'finance@acmetech.in',
+  email: 'dineshpolavarapu66@gmail.com',
   currency: 'INR',
-  businessType: 'SaaS & Enterprise Services',
+  businessType: 'SaaS & Enterprise AI Services',
   plan: 'Enterprise Operations',
   razorpayKeyId: 'rzp_test_TSolTvUZ0mStxn',
   razorpayKeySecret: 'jJtOV3iYoa1XPuuSDVj76nwc',
@@ -13,7 +13,7 @@ export const INITIAL_MERCHANT: MerchantProfile = {
   razorpayConnected: true,
   geminiApiKey: '',
   geminiConnected: true,
-  lastSyncedAt: '2 mins ago'
+  lastSyncedAt: 'Just now'
 };
 
 export const INITIAL_POLICIES: RecoveryPolicy = {
@@ -30,6 +30,203 @@ export const INITIAL_POLICIES: RecoveryPolicy = {
 
 export const INITIAL_CASES: RecoveryCase[] = [
   {
+    id: 'RC-INV-1',
+    customerName: 'Dinesh',
+    customerEmail: 'dineshpolavarapu66@gmail.com',
+    customerPhone: '7032983348',
+    companyName: 'NOEON Technologies',
+    issue: 'Invoice overdue',
+    amount: 90000,
+    risk: 'High',
+    recommendedAction: 'Payment link',
+    status: 'Needs review',
+    updated: 'Live from Razorpay',
+    createdAt: '2026-08-26T03:45:00Z',
+    failureReason: 'Invoice #1 unpaid (NOEON AB-M1 robot brain)',
+    failureCode: 'INVOICE_UNPAID',
+    paymentMethod: 'Razorpay Invoice Portal',
+    razorpayPaymentId: 'inv_TUOpdL2QQj3VgD',
+    invoiceNumber: 'inv_TUOpdL2QQj3VgD',
+    paymentLinkUrl: 'https://rzp.io/rzp/QeUgNGM',
+    attemptCount: 1,
+    maxAttempts: 3,
+    recoveryProbability: 82,
+    aiWhy: 'Active Razorpay invoice for ₹90,000 ("NOEON AB-M1"). Status: issued. Customer contact verified (7032983348). Generated direct payment portal link.',
+    aiPolicyNote: 'Invoice recovery bounds verified. 1-click payment portal active.',
+    policyAllowed: true,
+    recoveredAmount: 0,
+    timeline: [
+      {
+        id: 't-inv-1',
+        timestamp: '2026-08-26T04:32:00Z',
+        timeDisplay: '10:02 AM',
+        title: 'Invoice Issued on Razorpay',
+        description: 'Invoice #1 generated for ₹90,000 (NOEON AB-M1 robot brain) with SMS and Email notifications sent.',
+        type: 'detection'
+      },
+      {
+        id: 't-inv-2',
+        timestamp: '2026-08-26T04:33:00Z',
+        timeDisplay: '10:03 AM',
+        title: 'Revenue risk detected',
+        description: 'Recovery agent ingested unpaid invoice event from Razorpay Webhook TTWXpg6OFXSym0.',
+        type: 'detection'
+      },
+      {
+        id: 't-inv-3',
+        timestamp: '2026-08-26T04:34:00Z',
+        timeDisplay: '10:04 AM',
+        title: 'AI diagnosed settlement strategy',
+        description: 'Diagnosed high-value robotics asset invoice. Recommended 1-click Razorpay payment link dispatch.',
+        type: 'diagnosis'
+      }
+    ]
+  },
+  {
+    id: 'RC-PL-bZxwmC',
+    customerName: 'Dinesh',
+    customerEmail: 'dineshpolavarapu66@gmail.com',
+    customerPhone: '+917981271373',
+    companyName: 'NOEON Robotics',
+    issue: 'Payment failed',
+    amount: 10000,
+    risk: 'Medium',
+    recommendedAction: 'Payment link',
+    status: 'Awaiting payment',
+    updated: 'Live from Razorpay',
+    createdAt: '2026-08-26T03:30:00Z',
+    failureReason: 'Awaiting link settlement: "noeon subscription"',
+    failureCode: 'PAYMENT_LINK_ACTIVE',
+    paymentMethod: 'Razorpay Dynamic Rail',
+    razorpayPaymentId: 'plink_TUPl2G0SbZxwmC',
+    paymentLinkUrl: 'https://rzp.io/rzp/WT6797L',
+    attemptCount: 1,
+    maxAttempts: 3,
+    recoveryProbability: 88,
+    aiWhy: 'Active Razorpay Payment Link for ₹10,000 ("noeon subscription"). Customer contact +917981271373 with SMS/Email notifications active.',
+    aiPolicyNote: 'Autonomous reminder & payment link dispatch compliant',
+    policyAllowed: true,
+    recoveredAmount: 0,
+    timeline: [
+      {
+        id: 't-pl-1',
+        timestamp: '2026-08-26T04:15:00Z',
+        timeDisplay: '09:45 AM',
+        title: 'Payment Link Created on Razorpay',
+        description: 'Created link plink_TUPl2G0SbZxwmC for ₹10,000: https://rzp.io/rzp/WT6797L',
+        type: 'action'
+      }
+    ]
+  },
+  {
+    id: 'RC-PL-TTVhyx',
+    customerName: 'ABC Industries Pvt Ltd',
+    customerEmail: 'finance@abcindustries.in',
+    customerPhone: '+919876543210',
+    companyName: 'ABC Industries Pvt Ltd',
+    issue: 'Invoice overdue',
+    amount: 420000,
+    risk: 'High',
+    recommendedAction: 'Payment link',
+    status: 'Needs review',
+    updated: 'Live from Razorpay',
+    createdAt: '2026-08-26T02:00:00Z',
+    failureReason: 'Settlement: Customer ABC — ₹4.2L Overdue Invoice (18 Days Late) (Approved Extension)',
+    failureCode: 'OFFER_7_DAY_EXTENSION',
+    paymentMethod: 'Razorpay Multi-Rail',
+    razorpayPaymentId: 'plink_TTVhyxk7IJ2I8d',
+    paymentLinkUrl: 'https://rzp.io/rzp/jTGXmhm',
+    attemptCount: 1,
+    maxAttempts: 2,
+    recoveryProbability: 75,
+    aiWhy: 'Approved 7-day payment extension for ₹4,20,000 enterprise account. Dispatched secure link: https://rzp.io/rzp/jTGXmhm.',
+    aiPolicyNote: 'High-risk policy: Verified approved extension protocol.',
+    policyAllowed: true,
+    recoveredAmount: 0,
+    timeline: [
+      {
+        id: 't-pl-2',
+        timestamp: '2026-08-26T02:00:00Z',
+        timeDisplay: '07:30 AM',
+        title: 'Payment Extension Link Generated',
+        description: 'Generated plink_TTVhyxk7IJ2I8d (₹4.2L) for ABC Industries: https://rzp.io/rzp/jTGXmhm',
+        type: 'action'
+      }
+    ]
+  },
+  {
+    id: 'RC-PL-TTVUcH',
+    customerName: 'Enterprise AI Procurement Agent',
+    customerEmail: 'agentprocureenterprise44@agentnet.in',
+    customerPhone: '+919876543210',
+    companyName: 'AgentNet Commerce',
+    issue: 'Payment failed',
+    amount: 9529,
+    risk: 'Low',
+    recommendedAction: 'Payment link',
+    status: 'Awaiting payment',
+    updated: 'Live from Razorpay',
+    createdAt: '2026-08-26T01:30:00Z',
+    failureReason: 'Agentic Commerce: 1x Enterprise Cloud Compute Node (Dedicated) (NPCI_UAP)',
+    failureCode: 'NPCI_UAP_SETTLEMENT',
+    paymentMethod: 'UPI / Card Rail',
+    razorpayPaymentId: 'plink_TTVUcHF1SCyoOB',
+    paymentLinkUrl: 'https://rzp.io/rzp/J6QuVT8',
+    attemptCount: 1,
+    maxAttempts: 3,
+    recoveryProbability: 92,
+    aiWhy: 'Dedicated compute node link for AI procurement agent with 5% protocol discount. Short link: https://rzp.io/rzp/J6QuVT8',
+    aiPolicyNote: 'Autonomous agentic commerce policy compliant',
+    policyAllowed: true,
+    recoveredAmount: 0,
+    timeline: [
+      {
+        id: 't-pl-3',
+        timestamp: '2026-08-26T01:30:00Z',
+        timeDisplay: '07:00 AM',
+        title: 'Agentic Commerce Link Active',
+        description: 'Payment link plink_TTVUcHF1SCyoOB generated for ₹9,529: https://rzp.io/rzp/J6QuVT8',
+        type: 'action'
+      }
+    ]
+  },
+  {
+    id: 'RC-PL-TTDOzP',
+    customerName: 'ABC Industries Pvt Ltd',
+    customerEmail: 'finance@abcindustries.in',
+    customerPhone: '+919876543210',
+    companyName: 'ABC Industries',
+    issue: 'Invoice overdue',
+    amount: 420000,
+    risk: 'High',
+    recommendedAction: 'Escalate',
+    status: 'Needs review',
+    updated: 'Live from Razorpay',
+    createdAt: '2026-08-25T02:00:00Z',
+    failureReason: 'Formal 7-day Payment Extension - Invoice #inc_abc_001',
+    failureCode: 'NOEON_EXPERIENCE_ENGINE',
+    paymentMethod: 'Razorpay Dynamic',
+    razorpayPaymentId: 'plink_TTDOzPXoOy4LkL',
+    paymentLinkUrl: 'https://rzp.io/rzp/RZ6Q8FE',
+    attemptCount: 2,
+    maxAttempts: 2,
+    recoveryProbability: 60,
+    aiWhy: 'Extended due date passed for Invoice #inc_abc_001. Requires finance escalation.',
+    aiPolicyNote: 'High-risk stopping rule enforced.',
+    policyAllowed: false,
+    recoveredAmount: 0,
+    timeline: [
+      {
+        id: 't-pl-4',
+        timestamp: '2026-08-25T02:00:00Z',
+        timeDisplay: 'Aug 25',
+        title: 'Extension Link Generated',
+        description: 'Link plink_TTDOzPXoOy4LkL generated: https://rzp.io/rzp/RZ6Q8FE',
+        type: 'action'
+      }
+    ]
+  },
+  {
     id: 'RC-1092',
     customerName: 'Rahul Sharma',
     customerEmail: 'rahul.sharma@innovate.co.in',
@@ -37,7 +234,7 @@ export const INITIAL_CASES: RecoveryCase[] = [
     companyName: 'Innovate Digital',
     issue: 'Payment failed',
     amount: 5000,
-    risk: 'High',
+    risk: 'Medium',
     recommendedAction: 'Retry payment',
     status: 'Recovered',
     updated: '5 mins ago',
@@ -64,194 +261,12 @@ export const INITIAL_CASES: RecoveryCase[] = [
         type: 'failure'
       },
       {
-        id: 't-2',
-        timestamp: '2026-08-26T04:33:00Z',
-        timeDisplay: '10:03 AM',
-        title: 'Revenue risk detected',
-        description: 'Recovery agent ingested failure webhook from Razorpay.',
-        type: 'detection'
-      },
-      {
-        id: 't-3',
-        timestamp: '2026-08-26T04:33:30Z',
-        timeDisplay: '10:03 AM',
-        title: 'AI diagnosed temporary payment failure',
-        description: 'Evaluated 4 prior successful payments (100% on-time). Calculated 78% recovery probability.',
-        type: 'diagnosis'
-      },
-      {
-        id: 't-4',
-        timestamp: '2026-08-26T04:34:00Z',
-        timeDisplay: '10:04 AM',
-        title: 'Retry initiated',
-        description: 'Executed payment retry via Razorpay gateway following auto-retry policy.',
-        type: 'action'
-      },
-      {
         id: 't-5',
         timestamp: '2026-08-26T04:35:00Z',
         timeDisplay: '10:05 AM',
         title: 'Payment succeeded',
         description: 'Razorpay confirmed transaction capture (ref: pay_Nq9xL12850aA_retry1).',
         type: 'success'
-      },
-      {
-        id: 't-6',
-        timestamp: '2026-08-26T04:35:10Z',
-        timeDisplay: '10:05 AM',
-        title: '₹5,000 recovered',
-        description: 'Case marked as Recovered. Merchant revenue balance updated.',
-        type: 'success'
-      }
-    ]
-  },
-  {
-    id: 'RC-1093',
-    customerName: 'Priya Mehta',
-    customerEmail: 'priya.m@techscale.org',
-    customerPhone: '+91 97110 33892',
-    companyName: 'TechScale India',
-    issue: 'Payment failed',
-    amount: 8500,
-    risk: 'Medium',
-    recommendedAction: 'Payment link',
-    status: 'Awaiting payment',
-    updated: '14 mins ago',
-    createdAt: '2026-08-26T03:30:00Z',
-    failureReason: 'Authentication expired (OTP not entered in window)',
-    failureCode: '3DS_AUTH_FAILED',
-    paymentMethod: 'ICICI NetBanking',
-    razorpayPaymentId: 'pay_Nq8yP44109bZ',
-    attemptCount: 1,
-    maxAttempts: 3,
-    recoveryProbability: 64,
-    aiWhy: 'Customer abandoned OTP step on checkout. Direct card retries are blocked for 3DS failures; generated a frictionless 1-click Razorpay payment link sent via transactional email.',
-    aiPolicyNote: 'Customer communication allowed (Policy limit: 3 reminders, gap: 24h)',
-    policyAllowed: true,
-    timeline: [
-      {
-        id: 't-10',
-        timestamp: '2026-08-26T04:15:00Z',
-        timeDisplay: '09:45 AM',
-        title: 'Payment failed',
-        description: 'ICICI NetBanking transaction failed (OTP timeout).',
-        type: 'failure'
-      },
-      {
-        id: 't-11',
-        timestamp: '2026-08-26T04:16:00Z',
-        timeDisplay: '09:46 AM',
-        title: 'Revenue risk detected',
-        description: 'Identified ₹8,500 recurring subscription renewal at risk.',
-        type: 'detection'
-      },
-      {
-        id: 't-12',
-        timestamp: '2026-08-26T04:17:00Z',
-        timeDisplay: '09:47 AM',
-        title: 'AI selected payment link action',
-        description: '3DS failure diagnosed; bypassing card auto-retry to prevent negative UX.',
-        type: 'diagnosis'
-      },
-      {
-        id: 't-13',
-        timestamp: '2026-08-26T04:18:00Z',
-        timeDisplay: '09:48 AM',
-        title: 'Payment link generated & dispatched',
-        description: 'Link rzp.io/l/rc_8500_priya dispatched via email and WhatsApp payload.',
-        type: 'action'
-      }
-    ]
-  },
-  {
-    id: 'RC-1094',
-    customerName: 'Acme Cloud Solutions',
-    customerEmail: 'accounts@acmecloud.in',
-    customerPhone: '+91 98450 19283',
-    companyName: 'Acme Cloud India Ltd',
-    issue: 'Invoice overdue',
-    amount: 75000,
-    risk: 'High',
-    recommendedAction: 'Escalate',
-    status: 'Needs review',
-    updated: '28 mins ago',
-    createdAt: '2026-08-26T02:00:00Z',
-    failureReason: 'Net-30 Enterprise invoice overdue by 14 days',
-    failureCode: 'INVOICE_OVERDUE_14D',
-    paymentMethod: 'NEFT / RTGS Transfer',
-    invoiceNumber: 'INV-2026-0814',
-    attemptCount: 2,
-    maxAttempts: 2,
-    recoveryProbability: 45,
-    aiWhy: 'Exceeded maximum automated reminder threshold (2 sent). High financial exposure (₹75,000 > ₹50,000 policy threshold) requires finance manager review before legal/account hold escalation.',
-    aiPolicyNote: 'High-risk policy triggered: Merchant manual approval required for amounts > ₹50,000.',
-    policyAllowed: false,
-    timeline: [
-      {
-        id: 't-20',
-        timestamp: '2026-08-12T00:00:00Z',
-        timeDisplay: 'Aug 12',
-        title: 'Invoice generated',
-        description: 'Enterprise license invoice INV-2026-0814 issued with Net-30 terms.',
-        type: 'detection'
-      },
-      {
-        id: 't-21',
-        timestamp: '2026-08-26T02:00:00Z',
-        timeDisplay: '07:30 AM',
-        title: 'Invoice reached 14-day overdue threshold',
-        description: 'Automated reminders exhausted (2 reminders delivered with 0 responses).',
-        type: 'failure'
-      },
-      {
-        id: 't-22',
-        timestamp: '2026-08-26T02:05:00Z',
-        timeDisplay: '07:35 AM',
-        title: 'Escalation triggered',
-        description: 'Flagged for finance team review. Automated actions halted per stopping rules.',
-        type: 'escalation'
-      }
-    ]
-  },
-  {
-    id: 'RC-1095',
-    customerName: 'Amit Verma',
-    customerEmail: 'amit.verma@fintechventures.in',
-    customerPhone: '+91 99800 22341',
-    companyName: 'Fintech Ventures',
-    issue: 'Payment failed',
-    amount: 12000,
-    risk: 'Medium',
-    recommendedAction: 'Retry payment',
-    status: 'In progress',
-    updated: '42 mins ago',
-    createdAt: '2026-08-26T03:00:00Z',
-    failureReason: 'Insufficient balance on primary corporate card',
-    failureCode: 'INSUFFICIENT_FUNDS',
-    paymentMethod: 'Axis Bank Corp Credit ••9901',
-    razorpayPaymentId: 'pay_Nq7tK89201aB',
-    attemptCount: 1,
-    maxAttempts: 2,
-    recoveryProbability: 72,
-    aiWhy: 'Failure code indicates temporary insufficient funds at billing cycle cutoff. Cooldown interval of 6 hours observed. Retry scheduled for optimal payroll settlement window.',
-    aiPolicyNote: 'Policy compliant: Cooldown in effect until 12:00 PM.',
-    policyAllowed: true,
-    timeline: [
-      {
-        id: 't-30',
-        timestamp: '2026-08-26T03:00:00Z',
-        timeDisplay: '08:30 AM',
-        title: 'Payment failed',
-        description: 'Transaction ₹12,000 declined (Insufficient funds).',
-        type: 'failure'
-      },
-      {
-        id: 't-31',
-        timestamp: '2026-08-26T03:02:00Z',
-        timeDisplay: '08:32 AM',
-        title: 'AI strategy selected',
-        description: 'Scheduled smart retry for 12:00 PM with backup fallback payment link.',
-        type: 'diagnosis'
       }
     ]
   },
@@ -674,83 +689,85 @@ export const PAYMENT_LEDGER: PaymentRecord[] = [
     caseId: 'RC-1092'
   },
   {
+    id: 'p-100',
+    razorpayPaymentId: 'inv_TUOpdL2QQj3VgD',
+    customerName: 'Dinesh',
+    customerEmail: 'dineshpolavarapu66@gmail.com',
+    amount: 90000,
+    status: 'failed',
+    failureReason: 'INVOICE_UNPAID',
+    method: 'Razorpay Invoice Portal',
+    timestamp: 'Today, 10:02 AM',
+    recoveredByAgent: false,
+    caseId: 'RC-INV-1'
+  },
+  {
+    id: 'p-101',
+    razorpayPaymentId: 'plink_TUPl2G0SbZxwmC',
+    customerName: 'Dinesh',
+    customerEmail: 'dineshpolavarapu66@gmail.com',
+    amount: 10000,
+    status: 'failed',
+    failureReason: 'PAYMENT_LINK_ACTIVE',
+    method: 'Razorpay Dynamic Rail',
+    timestamp: 'Today, 09:45 AM',
+    recoveredByAgent: false,
+    caseId: 'RC-PL-bZxwmC'
+  },
+  {
     id: 'p-102',
     razorpayPaymentId: 'pay_Nq9xL12850aA',
     customerName: 'Rahul Sharma',
     customerEmail: 'rahul.sharma@innovate.co.in',
     amount: 5000,
-    status: 'failed',
-    failureReason: 'ISSUER_TIMEOUT',
+    status: 'succeeded',
     method: 'HDFC Visa Debit',
-    timestamp: 'Today, 10:02 AM',
-    recoveredByAgent: false,
+    timestamp: 'Today, 10:05 AM',
+    recoveredByAgent: true,
     caseId: 'RC-1092'
-  },
-  {
-    id: 'p-103',
-    razorpayPaymentId: 'pay_Nq8yP44109bZ',
-    customerName: 'Priya Mehta',
-    customerEmail: 'priya.m@techscale.org',
-    amount: 8500,
-    status: 'failed',
-    failureReason: '3DS_AUTH_FAILED',
-    method: 'ICICI NetBanking',
-    timestamp: 'Today, 09:45 AM',
-    recoveredByAgent: false,
-    caseId: 'RC-1093'
-  },
-  {
-    id: 'p-104',
-    razorpayPaymentId: 'pay_Nq5wM11290pL_rec',
-    customerName: 'Rajesh Khanna',
-    customerEmail: 'rkhanna@logisticsapex.com',
-    amount: 18000,
-    status: 'succeeded',
-    method: 'SBI Corporate Card',
-    timestamp: 'Today, 09:12 AM',
-    recoveredByAgent: true,
-    caseId: 'RC-1096'
-  },
-  {
-    id: 'p-105',
-    razorpayPaymentId: 'pay_Nq7tK89201aB',
-    customerName: 'Amit Verma',
-    customerEmail: 'amit.verma@fintechventures.in',
-    amount: 12000,
-    status: 'failed',
-    failureReason: 'INSUFFICIENT_FUNDS',
-    method: 'Axis Bank Corp Credit',
-    timestamp: 'Today, 08:30 AM',
-    recoveredByAgent: false,
-    caseId: 'RC-1095'
-  },
-  {
-    id: 'p-106',
-    razorpayPaymentId: 'pay_Nq4pK00981qA_r',
-    customerName: 'Sunita Deshmukh',
-    customerEmail: 'sunita.d@creativestudios.co',
-    amount: 4200,
-    status: 'succeeded',
-    method: 'Kotak Mahindra Debit',
-    timestamp: 'Today, 07:15 AM',
-    recoveredByAgent: true,
-    caseId: 'RC-1097'
-  },
-  {
-    id: 'p-107',
-    razorpayPaymentId: 'pay_Nq1mZ77291aZ_r',
-    customerName: 'CloudScale India',
-    customerEmail: 'finance@cloudscale.in',
-    amount: 50400,
-    status: 'succeeded',
-    method: 'RBL Corporate Debit',
-    timestamp: 'Yesterday, 01:00 AM',
-    recoveredByAgent: true,
-    caseId: 'RC-1101'
   }
 ];
 
 export const CUSTOMER_DIRECTORY: CustomerRecord[] = [
+  {
+    id: 'cust_TUOnIy7jOFYkiD',
+    name: 'Dinesh',
+    email: 'dineshpolavarapu66@gmail.com',
+    phone: '7032983348',
+    totalSpent: 90000,
+    successfulTransactions: 1,
+    failedTransactions: 0,
+    recoveredTransactions: 1,
+    lifetimeValue: 90000,
+    riskCategory: 'Low Risk',
+    lastSeen: 'Live on Razorpay'
+  },
+  {
+    id: 'cust_abc_ind',
+    name: 'ABC Industries Pvt Ltd',
+    email: 'finance@abcindustries.in',
+    phone: '+91 98765 43210',
+    totalSpent: 420000,
+    successfulTransactions: 3,
+    failedTransactions: 1,
+    recoveredTransactions: 1,
+    lifetimeValue: 420000,
+    riskCategory: 'Moderate',
+    lastSeen: 'Today'
+  },
+  {
+    id: 'cust_agentnet',
+    name: 'Enterprise AI Procurement Agent',
+    email: 'agentprocureenterprise44@agentnet.in',
+    phone: '+91 98765 43210',
+    totalSpent: 9529,
+    successfulTransactions: 2,
+    failedTransactions: 0,
+    recoveredTransactions: 1,
+    lifetimeValue: 9529,
+    riskCategory: 'Low Risk',
+    lastSeen: 'Today'
+  },
   {
     id: 'cust-1',
     name: 'Rahul Sharma',
@@ -763,70 +780,5 @@ export const CUSTOMER_DIRECTORY: CustomerRecord[] = [
     lifetimeValue: 45000,
     riskCategory: 'Low Risk',
     lastSeen: '10 mins ago'
-  },
-  {
-    id: 'cust-2',
-    name: 'Priya Mehta',
-    email: 'priya.m@techscale.org',
-    phone: '+91 97110 33892',
-    totalSpent: 68000,
-    successfulTransactions: 8,
-    failedTransactions: 1,
-    recoveredTransactions: 0,
-    lifetimeValue: 68000,
-    riskCategory: 'Moderate',
-    lastSeen: '14 mins ago'
-  },
-  {
-    id: 'cust-3',
-    name: 'Acme Cloud India Ltd',
-    email: 'accounts@acmecloud.in',
-    phone: '+91 98450 19283',
-    totalSpent: 450000,
-    successfulTransactions: 6,
-    failedTransactions: 2,
-    recoveredTransactions: 1,
-    lifetimeValue: 450000,
-    riskCategory: 'High Risk',
-    lastSeen: '28 mins ago'
-  },
-  {
-    id: 'cust-4',
-    name: 'Amit Verma',
-    email: 'amit.verma@fintechventures.in',
-    phone: '+91 99800 22341',
-    totalSpent: 124000,
-    successfulTransactions: 11,
-    failedTransactions: 1,
-    recoveredTransactions: 0,
-    lifetimeValue: 124000,
-    riskCategory: 'Moderate',
-    lastSeen: '42 mins ago'
-  },
-  {
-    id: 'cust-5',
-    name: 'Apex Logistics Ltd',
-    email: 'rkhanna@logisticsapex.com',
-    phone: '+91 98112 00192',
-    totalSpent: 216000,
-    successfulTransactions: 12,
-    failedTransactions: 1,
-    recoveredTransactions: 1,
-    lifetimeValue: 216000,
-    riskCategory: 'Low Risk',
-    lastSeen: '1 hour ago'
-  },
-  {
-    id: 'cust-6',
-    name: 'CloudScale Infra Pvt Ltd',
-    email: 'finance@cloudscale.in',
-    phone: '+91 98800 66542',
-    totalSpent: 604800,
-    successfulTransactions: 12,
-    failedTransactions: 1,
-    recoveredTransactions: 1,
-    lifetimeValue: 604800,
-    riskCategory: 'Low Risk',
-    lastSeen: '6 hours ago'
   }
 ];

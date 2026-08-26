@@ -232,7 +232,25 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
             </div>
 
             {/* Action Trigger Box */}
-            <div className="pt-2">
+            <div className="pt-2 space-y-2">
+              {caseItem.paymentLinkUrl && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
+                  <div className="min-w-0 pr-2">
+                    <span className="text-[10px] font-mono text-blue-700 block uppercase font-bold">Razorpay Live Link</span>
+                    <span className="text-xs font-mono text-blue-900 truncate block">{caseItem.paymentLinkUrl}</span>
+                  </div>
+                  <a
+                    href={caseItem.paymentLinkUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium shrink-0 transition-colors shadow-2xs"
+                  >
+                    <span>Open</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
+
               {isRecovered ? (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
                   <span className="text-xs font-semibold text-emerald-800 font-mono block">
@@ -248,7 +266,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   onClick={() => {
                     onExecuteAction(caseItem);
                   }}
-                  className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 text-xs font-semibold text-white bg-[#171717] hover:bg-neutral-800 rounded-lg transition-all shadow-sm"
+                  className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 text-xs font-semibold text-white bg-[#171717] hover:bg-neutral-800 rounded-lg transition-all shadow-sm cursor-pointer"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
                   <span>Execute {caseItem.recommendedAction}</span>

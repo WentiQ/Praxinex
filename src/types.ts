@@ -57,6 +57,7 @@ export interface RecoveryCase {
   timeline: TimelineEvent[];
   recoveredAmount?: number;
   recoveredAt?: string;
+  paymentLinkUrl?: string;
 }
 
 export interface ActivityEvent {

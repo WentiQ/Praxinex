@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar, NavigationTab } from './components/Sidebar';
 import { Header } from './components/Header';
 import { OverviewView } from './components/OverviewView';
@@ -38,6 +38,7 @@ export default function App() {
   const [payments, setPayments] = useState<PaymentRecord[]>(PAYMENT_LEDGER);
   const [customers, setCustomers] = useState<CustomerRecord[]>(CUSTOMER_DIRECTORY);
   const [trendData, setTrendData] = useState(REVENUE_TREND_DATA);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   // Modals & Interactive Flow States
   const [selectedCase, setSelectedCase] = useState<RecoveryCase | null>(null);
@@ -45,13 +46,78 @@ export default function App() {
   const [isSimulateOpen, setIsSimulateOpen] = useState<boolean>(false);
   const [isScanOpen, setIsScanOpen] = useState<boolean>(false);
 
+  // Live Razorpay Sync Function
+  const syncLiveRazorpayData = useCallback(async (quiet = false) => {
+    if (!quiet) setIsSyncing(true);
+    try {
+      const res = await fetch(`/api/razorpay/sync?keyId=${encodeURIComponent(merchant.razorpayKeyId)}&keySecret=${encodeURIComponent(merchant.razorpayKeySecret)}`);
+      const data = await res.json();
+
+      if (data.success && data.transformed) {
+        const { cases: realCases, customers: realCustomers, payments: realPayments, activities: realActivities } = data.transformed;
+
+        if (realCases && realCases.length > 0) {
+          // Merge real cases with baseline
+          setCases(prev => {
+            const existingIds = new Set(realCases.map((c: any) => c.id));
+            const retained = prev.filter(c => !existingIds.has(c.id));
+            return [...realCases, ...retained];
+          });
+        }
+
+        if (realCustomers && realCustomers.length > 0) {
+          setCustomers(prev => {
+            const existingEmails = new Set(realCustomers.map((c: any) => c.email));
+            const retained = prev.filter(c => !existingEmails.has(c.email));
+            return [...realCustomers, ...retained];
+          });
+        }
+
+        if (realPayments && realPayments.length > 0) {
+          setPayments(prev => {
+            const existingIds = new Set(realPayments.map((p: any) => p.id));
+            const retained = prev.filter(p => !existingIds.has(p.id));
+            return [...realPayments, ...retained];
+          });
+        }
+
+        if (realActivities && realActivities.length > 0) {
+          setActivities(prev => {
+            const existingIds = new Set(realActivities.map((a: any) => a.id));
+            const retained = prev.filter(a => !existingIds.has(a.id));
+            return [...realActivities, ...retained];
+          });
+        }
+
+        setMerchant(prev => ({
+          ...prev,
+          lastSyncedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          razorpayConnected: true
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to sync live Razorpay data:', err);
+    } finally {
+      if (!quiet) setIsSyncing(false);
+    }
+  }, [merchant.razorpayKeyId, merchant.razorpayKeySecret]);
+
+  // Initial Sync & Periodic Webhook Polling
+  useEffect(() => {
+    syncLiveRazorpayData(false);
+    const interval = setInterval(() => {
+      syncLiveRazorpayData(true);
+    }, 7000);
+    return () => clearInterval(interval);
+  }, [syncLiveRazorpayData]);
+
   // Computed Financial Metrics
-  const totalAtRisk = cases.reduce((sum, c) => sum + (c.status !== 'Recovered' ? c.amount : 0), 161000);
+  const totalAtRisk = cases.reduce((sum, c) => sum + (c.status !== 'Recovered' ? c.amount : 0), 0);
   const totalRecovered = cases.reduce((sum, c) => sum + (c.recoveredAmount || 0), 87500);
   const activeCasesCount = cases.filter(c => c.status !== 'Recovered').length;
-  const recoveryRate = (totalRecovered / (totalRecovered + totalAtRisk)) * 100;
-  const casesAnalyzed = 42 + (cases.length - INITIAL_CASES.length);
-  const actionsExecuted = 31 + (cases.filter(c => c.status === 'Recovered').length - 5);
+  const recoveryRate = (totalRecovered / (totalRecovered + totalAtRisk || 1)) * 100;
+  const casesAnalyzed = cases.length;
+  const actionsExecuted = 31 + cases.filter(c => c.status === 'Recovered').length;
 
   // Handlers
   const handleOpenCase = (caseItem: RecoveryCase) => {
@@ -99,7 +165,7 @@ export default function App() {
     if (isSuccess) {
       const newPayment: PaymentRecord = {
         id: `p-${Date.now()}`,
-        razorpayPaymentId: `pay_Nq${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
+        razorpayPaymentId: updatedCase.razorpayPaymentId || `pay_Nq${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
         customerName: updatedCase.customerName,
         customerEmail: updatedCase.customerEmail,
         amount: updatedCase.amount,
@@ -152,7 +218,8 @@ export default function App() {
     setSelectedCase(newCase);
   };
 
-  const handleScanComplete = (batchRecovered: number, updatedCount: number) => {
+  const handleScanComplete = async (batchRecovered: number, updatedCount: number) => {
+    await syncLiveRazorpayData(false);
     // Mark in-progress cases as recovered
     setCases(prev => prev.map(c => {
       if (c.id === 'RC-1095' || c.id === 'RC-1093') {
@@ -326,6 +393,8 @@ export default function App() {
             <IntegrationsView
               merchant={merchant}
               onUpdateMerchant={setMerchant}
+              onSyncRazorpay={syncLiveRazorpayData}
+              isSyncing={isSyncing}
             />
           )}
 
