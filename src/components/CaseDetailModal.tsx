@@ -16,7 +16,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { RecoveryCase } from '../types';
-import { formatINR } from '../utils/formatters';
+import { formatINR, formatTimelineDateTime } from '../utils/formatters';
 
 interface CaseDetailModalProps {
   caseItem: RecoveryCase | null;
@@ -121,55 +121,78 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 
             {/* Thin vertical timeline */}
             <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-[1px] before:bg-neutral-200">
-              {caseItem.timeline.map((event, idx) => {
-                const isSuccess = event.type === 'success';
-                const isFailure = event.type === 'failure';
-                const isAction = event.type === 'action';
-                const isDiagnosis = event.type === 'diagnosis';
+              {[...caseItem.timeline]
+                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                .map((event, idx) => {
+                  const isSuccess = event.type === 'success';
+                  const isFailure = event.type === 'failure';
+                  const isAction = event.type === 'action';
+                  const isDiagnosis = event.type === 'diagnosis';
+                  const isEscalation = event.type === 'escalation';
 
-                return (
-                  <div key={event.id || idx} className="relative group">
-                    {/* Timeline Node Point */}
-                    <div 
-                      className={`absolute -left-6 top-0.5 w-4 h-4 rounded-full border-2 bg-white flex items-center justify-center ${
-                        isSuccess
-                          ? 'border-emerald-600 text-emerald-600'
-                          : isFailure
-                          ? 'border-rose-500 text-rose-500'
-                          : isAction
-                          ? 'border-blue-600 text-blue-600'
-                          : 'border-neutral-400 text-neutral-500'
-                      }`}
-                    >
+                  return (
+                    <div key={event.id || idx} className="relative group">
+                      {/* Timeline Node Point */}
                       <div 
-                        className={`w-1.5 h-1.5 rounded-full ${
+                        className={`absolute -left-6 top-0.5 w-4 h-4 rounded-full border-2 bg-white flex items-center justify-center ${
                           isSuccess
-                            ? 'bg-emerald-600'
+                            ? 'border-emerald-600 text-emerald-600'
                             : isFailure
-                            ? 'bg-rose-500'
+                            ? 'border-rose-500 text-rose-500'
+                            : isEscalation
+                            ? 'border-amber-500 text-amber-600'
                             : isAction
-                            ? 'bg-blue-600'
-                            : 'bg-neutral-400'
-                        }`} 
-                      />
-                    </div>
-
-                    <div className="space-y-0.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-[#171717]">
-                          {event.title}
-                        </span>
-                        <span className="text-[11px] font-mono text-[#737373]">
-                          {event.timeDisplay}
-                        </span>
+                            ? 'border-blue-600 text-blue-600'
+                            : isDiagnosis
+                            ? 'border-purple-600 text-purple-600'
+                            : 'border-neutral-400 text-neutral-500'
+                        }`}
+                      >
+                        <div 
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            isSuccess
+                              ? 'bg-emerald-600'
+                              : isFailure
+                              ? 'bg-rose-500 animate-pulse'
+                              : isEscalation
+                              ? 'bg-amber-500'
+                              : isAction
+                              ? 'bg-blue-600'
+                              : isDiagnosis
+                              ? 'bg-purple-600'
+                              : 'bg-neutral-400'
+                          }`} 
+                        />
                       </div>
-                      <p className="text-xs text-[#737373] leading-relaxed">
-                        {event.description}
-                      </p>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-1.5">
+                            <span className="text-xs font-semibold text-[#171717]">
+                              {event.title}
+                            </span>
+                            {isFailure && (
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 bg-rose-50 text-rose-700 border border-rose-200 rounded font-medium">
+                                Incident
+                              </span>
+                            )}
+                            {isDiagnosis && (
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 bg-purple-50 text-purple-700 border border-purple-200 rounded font-medium">
+                                AI Evaluated
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] font-mono text-[#737373] whitespace-nowrap ml-2">
+                            {formatTimelineDateTime(event.timestamp, event.timeDisplay)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#525252] leading-relaxed">
+                          {event.description}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           </div>
 

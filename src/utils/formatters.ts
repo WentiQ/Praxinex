@@ -17,7 +17,6 @@ export function formatTimeAgo(isoString: string): string {
     const diffMins = Math.floor(diffMs / (1000 * 60));
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
-
     if (diffMins < 1) return 'Just now';
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
@@ -27,3 +26,31 @@ export function formatTimeAgo(isoString: string): string {
     return 'Recent';
   }
 }
+
+/**
+ * Format timestamp into exact readable Date and Time (e.g. "26 Aug 2026, 06:02 PM")
+ */
+export function formatTimelineDateTime(timestamp?: string, fallback?: string): string {
+  if (!timestamp) return fallback || '';
+  try {
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return fallback || timestamp;
+
+    const dateStr = d.toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: d.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+    });
+
+    const timeStr = d.toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+
+    return `${dateStr}, ${timeStr}`;
+  } catch {
+    return fallback || timestamp;
+  }
+}
+

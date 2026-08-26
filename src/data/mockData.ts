@@ -61,23 +61,23 @@ export const INITIAL_CASES: RecoveryCase[] = [
         timestamp: '2026-08-26T04:32:00Z',
         timeDisplay: '10:02 AM',
         title: 'Invoice Issued on Razorpay',
-        description: 'Invoice #1 generated for ₹90,000 (NOEON AB-M1 robot brain) with SMS and Email notifications sent.',
+        description: 'Invoice #1 generated for ₹90,000 ("NOEON AB-M1") with customer SMS and Email issued.',
         type: 'detection'
       },
       {
         id: 't-inv-2',
         timestamp: '2026-08-26T04:33:00Z',
         timeDisplay: '10:03 AM',
-        title: 'Revenue risk detected',
-        description: 'Recovery agent ingested unpaid invoice event from Razorpay Webhook TTWXpg6OFXSym0.',
-        type: 'detection'
+        title: 'Payment overdue / Settlement pending',
+        description: 'Invoice #1 reached unpaid threshold (NOEON AB-M1 robot brain). Initial settlement window lapsed without capture.',
+        type: 'failure'
       },
       {
         id: 't-inv-3',
         timestamp: '2026-08-26T04:34:00Z',
         timeDisplay: '10:04 AM',
         title: 'AI diagnosed settlement strategy',
-        description: 'Diagnosed high-value robotics asset invoice. Recommended 1-click Razorpay payment link dispatch.',
+        description: 'Analyzed enterprise buyer profile (Dinesh, 7032983348). Estimated 82% recovery probability. Selected multi-rail Razorpay payment link.',
         type: 'diagnosis'
       }
     ]
@@ -108,6 +108,22 @@ export const INITIAL_CASES: RecoveryCase[] = [
     policyAllowed: true,
     recoveredAmount: 0,
     timeline: [
+      {
+        id: 't-pl-0',
+        timestamp: '2026-08-26T03:30:00Z',
+        timeDisplay: '09:00 AM',
+        title: 'Subscription payment lapsed',
+        description: 'Recurring monthly charge for "noeon subscription" failed automatic deduction.',
+        type: 'failure'
+      },
+      {
+        id: 't-pl-diag',
+        timestamp: '2026-08-26T03:35:00Z',
+        timeDisplay: '09:05 AM',
+        title: 'AI selected payment link action',
+        description: 'Diagnosed recurring subscriber profile. Generated direct multi-rail Razorpay checkout link.',
+        type: 'diagnosis'
+      },
       {
         id: 't-pl-1',
         timestamp: '2026-08-26T04:15:00Z',
@@ -145,6 +161,22 @@ export const INITIAL_CASES: RecoveryCase[] = [
     recoveredAmount: 0,
     timeline: [
       {
+        id: 't-pl-fail-2',
+        timestamp: '2026-08-26T01:45:00Z',
+        timeDisplay: '07:15 AM',
+        title: 'Invoice overdue by 18 days',
+        description: 'Enterprise invoice ₹4,20,000 exceeded Net-30 terms. Previous 2 reminders unanswered.',
+        type: 'failure'
+      },
+      {
+        id: 't-pl-diag-2',
+        timestamp: '2026-08-26T01:50:00Z',
+        timeDisplay: '07:20 AM',
+        title: 'AI negotiated 7-day extension settlement',
+        description: 'Customer requested 7-day extension. Approved per policy threshold with secure link dispatch.',
+        type: 'diagnosis'
+      },
+      {
         id: 't-pl-2',
         timestamp: '2026-08-26T02:00:00Z',
         timeDisplay: '07:30 AM',
@@ -180,6 +212,22 @@ export const INITIAL_CASES: RecoveryCase[] = [
     policyAllowed: true,
     recoveredAmount: 0,
     timeline: [
+      {
+        id: 't-pl-fail-3',
+        timestamp: '2026-08-26T01:15:00Z',
+        timeDisplay: '06:45 AM',
+        title: 'Agentic automated settlement dropped',
+        description: 'NPCI_UAP protocol session timed out before card authorization was completed.',
+        type: 'failure'
+      },
+      {
+        id: 't-pl-diag-3',
+        timestamp: '2026-08-26T01:20:00Z',
+        timeDisplay: '06:50 AM',
+        title: 'AI selected dynamic compute node link',
+        description: 'Applied 5% NPCI_UAP protocol settlement discount and generated frictionless link.',
+        type: 'diagnosis'
+      },
       {
         id: 't-pl-3',
         timestamp: '2026-08-26T01:30:00Z',
@@ -217,12 +265,28 @@ export const INITIAL_CASES: RecoveryCase[] = [
     recoveredAmount: 0,
     timeline: [
       {
+        id: 't-pl-fail-4',
+        timestamp: '2026-08-25T01:30:00Z',
+        timeDisplay: 'Aug 25, 07:00 AM',
+        title: '7-day extension grace period expired',
+        description: 'Customer failed to disburse funds by Friday settlement cutoff.',
+        type: 'failure'
+      },
+      {
+        id: 't-pl-diag-4',
+        timestamp: '2026-08-25T01:45:00Z',
+        timeDisplay: 'Aug 25, 07:15 AM',
+        title: 'Stopping rule enforced',
+        description: 'High-risk threshold exceeded (₹4,20,000 > ₹50,000 policy limit). Automated retries halted.',
+        type: 'diagnosis'
+      },
+      {
         id: 't-pl-4',
         timestamp: '2026-08-25T02:00:00Z',
-        timeDisplay: 'Aug 25',
-        title: 'Extension Link Generated',
-        description: 'Link plink_TTDOzPXoOy4LkL generated: https://rzp.io/rzp/RZ6Q8FE',
-        type: 'action'
+        timeDisplay: 'Aug 25, 07:30 AM',
+        title: 'Escalated to Finance Operations',
+        description: 'Case flagged for manual intervention. Link plink_TTDOzPXoOy4LkL reserved: https://rzp.io/rzp/RZ6Q8FE',
+        type: 'escalation'
       }
     ]
   },
@@ -677,18 +741,6 @@ export const FAILURE_CATEGORY_DATA = [
 
 export const PAYMENT_LEDGER: PaymentRecord[] = [
   {
-    id: 'p-101',
-    razorpayPaymentId: 'pay_Nq9xL12850aA_retry1',
-    customerName: 'Rahul Sharma',
-    customerEmail: 'rahul.sharma@innovate.co.in',
-    amount: 5000,
-    status: 'succeeded',
-    method: 'HDFC Visa Debit',
-    timestamp: 'Today, 10:05 AM',
-    recoveredByAgent: true,
-    caseId: 'RC-1092'
-  },
-  {
     id: 'p-100',
     razorpayPaymentId: 'inv_TUOpdL2QQj3VgD',
     customerName: 'Dinesh',
@@ -697,7 +749,7 @@ export const PAYMENT_LEDGER: PaymentRecord[] = [
     status: 'failed',
     failureReason: 'INVOICE_UNPAID',
     method: 'Razorpay Invoice Portal',
-    timestamp: 'Today, 10:02 AM',
+    timestamp: '26 Aug 2026, 06:12 PM',
     recoveredByAgent: false,
     caseId: 'RC-INV-1'
   },
@@ -707,11 +759,10 @@ export const PAYMENT_LEDGER: PaymentRecord[] = [
     customerName: 'Dinesh',
     customerEmail: 'dineshpolavarapu66@gmail.com',
     amount: 10000,
-    status: 'failed',
-    failureReason: 'PAYMENT_LINK_ACTIVE',
+    status: 'succeeded',
     method: 'Razorpay Dynamic Rail',
-    timestamp: 'Today, 09:45 AM',
-    recoveredByAgent: false,
+    timestamp: '26 Aug 2026, 06:57 PM',
+    recoveredByAgent: true,
     caseId: 'RC-PL-bZxwmC'
   },
   {
@@ -720,11 +771,101 @@ export const PAYMENT_LEDGER: PaymentRecord[] = [
     customerName: 'Rahul Sharma',
     customerEmail: 'rahul.sharma@innovate.co.in',
     amount: 5000,
+    status: 'failed',
+    failureReason: 'ISSUER_TIMEOUT',
+    method: 'HDFC Visa Debit',
+    timestamp: '26 Aug 2026, 10:02 AM',
+    recoveredByAgent: false,
+    caseId: 'RC-1092'
+  },
+  {
+    id: 'p-103',
+    razorpayPaymentId: 'pay_Nq9xL12850aA_retry1',
+    customerName: 'Rahul Sharma',
+    customerEmail: 'rahul.sharma@innovate.co.in',
+    amount: 5000,
     status: 'succeeded',
     method: 'HDFC Visa Debit',
-    timestamp: 'Today, 10:05 AM',
+    timestamp: '26 Aug 2026, 10:05 AM',
     recoveredByAgent: true,
     caseId: 'RC-1092'
+  },
+  {
+    id: 'p-104',
+    razorpayPaymentId: 'pay_Nq8yP44109bZ',
+    customerName: 'Priya Mehta',
+    customerEmail: 'priya.m@techscale.org',
+    amount: 8500,
+    status: 'failed',
+    failureReason: '3DS_AUTH_FAILED',
+    method: 'ICICI NetBanking',
+    timestamp: '26 Aug 2026, 09:45 AM',
+    recoveredByAgent: false,
+    caseId: 'RC-1093'
+  },
+  {
+    id: 'p-105',
+    razorpayPaymentId: 'pay_Nq5wM11290pL',
+    customerName: 'Rajesh Khanna',
+    customerEmail: 'rkhanna@logisticsapex.com',
+    amount: 18000,
+    status: 'failed',
+    failureReason: 'CARD_EXPIRED',
+    method: 'SBI Corporate Card',
+    timestamp: '26 Aug 2026, 06:45 AM',
+    recoveredByAgent: false,
+    caseId: 'RC-1096'
+  },
+  {
+    id: 'p-106',
+    razorpayPaymentId: 'pay_Nq5wM11290pL_rec',
+    customerName: 'Rajesh Khanna',
+    customerEmail: 'rkhanna@logisticsapex.com',
+    amount: 18000,
+    status: 'succeeded',
+    method: 'SBI Corporate Card',
+    timestamp: '26 Aug 2026, 09:12 AM',
+    recoveredByAgent: true,
+    caseId: 'RC-1096'
+  },
+  {
+    id: 'p-107',
+    razorpayPaymentId: 'pay_Nq7tK89201aB',
+    customerName: 'Amit Verma',
+    customerEmail: 'amit.verma@fintechventures.in',
+    amount: 12000,
+    status: 'failed',
+    failureReason: 'INSUFFICIENT_FUNDS',
+    method: 'Axis Bank Corp Credit',
+    timestamp: '26 Aug 2026, 08:30 AM',
+    recoveredByAgent: false,
+    caseId: 'RC-1095'
+  },
+  {
+    id: 'p-108',
+    razorpayPaymentId: 'plink_TTVhyxk7IJ2I8d',
+    customerName: 'ABC Industries Pvt Ltd',
+    customerEmail: 'finance@abcindustries.in',
+    amount: 420000,
+    status: 'failed',
+    failureReason: 'OVERDUE_18D',
+    method: 'Razorpay Multi-Rail',
+    timestamp: '24 Aug 2026, 12:07 PM',
+    recoveredByAgent: false,
+    caseId: 'RC-PL-IJ2I8d'
+  },
+  {
+    id: 'p-109',
+    razorpayPaymentId: 'plink_TTVUcHF1SCyoOB',
+    customerName: 'Enterprise AI Procurement Agent',
+    customerEmail: 'agentprocureenterprise44@agentnet.in',
+    amount: 9529,
+    status: 'failed',
+    failureReason: 'NPCI_UAP_SESSION_TIMEOUT',
+    method: 'UPI / Card Rail',
+    timestamp: '24 Aug 2026, 11:54 AM',
+    recoveredByAgent: false,
+    caseId: 'RC-PL-SCyoOB'
   }
 ];
 

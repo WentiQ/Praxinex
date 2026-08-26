@@ -57,11 +57,54 @@ export default function App() {
         const { cases: realCases, customers: realCustomers, payments: realPayments, activities: realActivities } = data.transformed;
 
         if (realCases && realCases.length > 0) {
-          // Merge real cases with baseline
           setCases(prev => {
-            const existingIds = new Set(realCases.map((c: any) => c.id));
-            const retained = prev.filter(c => !existingIds.has(c.id));
-            return [...realCases, ...retained];
+            const merged = realCases.map((rc: any) => {
+              const existing = prev.find(p => p.id === rc.id || (p.invoiceNumber && p.invoiceNumber === rc.invoiceNumber));
+              if (existing) {
+                // Merge timelines so newly added action and audit events are preserved
+                const existingTimelineIds = new Set(existing.timeline.map((t: any) => t.id));
+                const mergedTimeline = [
+                  ...existing.timeline,
+                  ...rc.timeline.filter((t: any) => !existingTimelineIds.has(t.id))
+                ];
+                return {
+                  ...rc,
+                  paymentLinkUrl: rc.paymentLinkUrl || existing.paymentLinkUrl,
+                  razorpayPaymentId: rc.razorpayPaymentId || existing.razorpayPaymentId,
+                  status: (existing.status === 'Recovered' || existing.status === 'Awaiting payment') ? existing.status : rc.status,
+                  recoveredAmount: existing.recoveredAmount || rc.recoveredAmount,
+                  recoveredAt: existing.recoveredAt || rc.recoveredAt,
+                  timeline: mergedTimeline
+                };
+              }
+              return rc;
+            });
+
+            // Also keep any extra non-duplicate cases
+            const realIds = new Set(merged.map((c: any) => c.id));
+            const extra = prev.filter(p => !realIds.has(p.id));
+            return [...merged, ...extra];
+          });
+
+          // Live update selectedCase if open
+          setSelectedCase(curr => {
+            if (!curr) return null;
+            const updated = realCases.find((rc: any) => rc.id === curr.id || (rc.invoiceNumber && rc.invoiceNumber === curr.invoiceNumber));
+            if (updated) {
+              const existingIds = new Set(curr.timeline.map((t: any) => t.id));
+              const mergedTimeline = [
+                ...curr.timeline,
+                ...updated.timeline.filter((t: any) => !existingIds.has(t.id))
+              ];
+              return {
+                ...curr,
+                paymentLinkUrl: updated.paymentLinkUrl || curr.paymentLinkUrl,
+                razorpayPaymentId: updated.razorpayPaymentId || curr.razorpayPaymentId,
+                status: (curr.status === 'Recovered' || curr.status === 'Awaiting payment') ? curr.status : updated.status,
+                timeline: mergedTimeline
+              };
+            }
+            return curr;
           });
         }
 
