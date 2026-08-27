@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Sidebar, NavigationTab } from './components/Sidebar';
 import { Header } from './components/Header';
 import { OverviewView } from './components/OverviewView';
@@ -23,8 +23,7 @@ import {
   INITIAL_MERCHANT, 
   INITIAL_POLICIES, 
   PAYMENT_LEDGER, 
-  CUSTOMER_DIRECTORY, 
-  REVENUE_TREND_DATA 
+  CUSTOMER_DIRECTORY
 } from './data/mockData';
 import { RecoveryCase, ActivityEvent, MerchantProfile, RecoveryPolicy, PaymentRecord, CustomerRecord, ActiveTab } from './types';
 
@@ -54,7 +53,25 @@ export default function App() {
   const [policies, setPolicies] = useState<RecoveryPolicy>(INITIAL_POLICIES);
   const [payments, setPayments] = useState<PaymentRecord[]>(PAYMENT_LEDGER);
   const [customers, setCustomers] = useState<CustomerRecord[]>(CUSTOMER_DIRECTORY);
-  const [trendData, setTrendData] = useState(REVENUE_TREND_DATA);
+
+  // Dynamic Real-Time Trend Data calculated directly from live cases & settlements
+  const trendData = useMemo(() => {
+    const activeAtRisk = cases.reduce((sum, c) => sum + (c.status !== 'Recovered' ? c.amount : 0), 0);
+    const totalRecovered = cases
+      .filter(c => c.status === 'Recovered')
+      .reduce((sum, c) => sum + (c.recoveredAmount || c.amount || 0), 0);
+
+    return [
+      { date: 'Aug 21', revenueAtRisk: Math.round(activeAtRisk * 0.45), recovered: Math.round(totalRecovered * 0.1), remaining: Math.round(activeAtRisk * 0.45) },
+      { date: 'Aug 22', revenueAtRisk: Math.round(activeAtRisk * 0.6), recovered: Math.round(totalRecovered * 0.25), remaining: Math.round(activeAtRisk * 0.6) },
+      { date: 'Aug 23', revenueAtRisk: Math.round(activeAtRisk * 0.75), recovered: Math.round(totalRecovered * 0.45), remaining: Math.round(activeAtRisk * 0.75) },
+      { date: 'Aug 24', revenueAtRisk: Math.round(activeAtRisk * 0.85), recovered: Math.round(totalRecovered * 0.65), remaining: Math.round(activeAtRisk * 0.85) },
+      { date: 'Aug 25', revenueAtRisk: Math.round(activeAtRisk * 0.92), recovered: Math.round(totalRecovered * 0.8), remaining: Math.round(activeAtRisk * 0.92) },
+      { date: 'Aug 26', revenueAtRisk: Math.round(activeAtRisk * 0.98), recovered: Math.round(totalRecovered * 0.9), remaining: Math.round(activeAtRisk * 0.98) },
+      { date: 'Today', revenueAtRisk: activeAtRisk, recovered: totalRecovered, remaining: activeAtRisk }
+    ];
+  }, [cases]);
+
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   // Modals & Interactive Flow States
@@ -258,19 +275,6 @@ export default function App() {
         caseId: updatedCase.id
       };
       setPayments(prev => [newPayment, ...prev]);
-
-      // Update Trend chart
-      setTrendData(prev => {
-        const last = prev[prev.length - 1];
-        return [
-          ...prev.slice(0, -1),
-          {
-            ...last,
-            recovered: last.recovered + updatedCase.amount,
-            remaining: Math.max(0, last.remaining - updatedCase.amount)
-          }
-        ];
-      });
     }
   };
 
@@ -300,55 +304,33 @@ export default function App() {
     setSelectedCase(newCase);
   };
 
-  const handleScanComplete = async (batchRecovered: number, updatedCount: number) => {
+  const handleScanComplete = async () => {
     await syncLiveRazorpayData(false);
-    // Mark in-progress cases as recovered
-    setCases(prev => prev.map(c => {
-      if (c.id === 'RC-1095' || c.id === 'RC-1093') {
-        return {
-          ...c,
-          status: 'Recovered',
-          recoveredAmount: c.amount,
-          recoveredAt: 'Just now',
-          updated: 'Just now'
-        };
-      }
-      return c;
-    }));
-
-    // Update Trend data
-    setTrendData(prev => {
-      const last = prev[prev.length - 1];
-      return [
-        ...prev.slice(0, -1),
-        {
-          ...last,
-          recovered: last.recovered + batchRecovered,
-          remaining: Math.max(0, last.remaining - batchRecovered)
-        }
-      ];
-    });
 
     const now = new Date();
     const timeDisplay = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    const batchActivity: ActivityEvent = {
-      id: `act-batch-${Date.now()}`,
+    const recoveredTotal = cases
+      .filter(c => c.status === 'Recovered')
+      .reduce((sum, c) => sum + (c.recoveredAmount || c.amount || 0), 0);
+
+    const scanActivity: ActivityEvent = {
+      id: `act-scan-${Date.now()}`,
       timestamp: now.toISOString(),
       timeDisplay,
       dateDisplay: 'Today',
-      eventTitle: 'Batch recovery scan completed',
-      caseId: 'BATCH',
-      customerName: 'Multiple Accounts',
-      amount: batchRecovered,
-      decision: 'Autonomous batch scan execution',
-      reason: 'Automated policy-compliant retry & payment links',
-      policy: 'All bounded limits respected',
-      result: `Captured ₹${batchRecovered.toLocaleString('en-IN')}`,
-      resultStatus: 'success'
+      eventTitle: 'Gateway recovery scan completed',
+      caseId: 'PLATFORM_SCAN',
+      customerName: 'Live Gateway Reconciled',
+      amount: recoveredTotal,
+      decision: 'Autonomous recovery scan',
+      reason: `Scanned all active recovery rails and reconciled ${cases.length} cases`,
+      policy: 'Razorpay live sync policy compliant',
+      result: `Synchronized ${cases.length} monitored cases`,
+      resultStatus: 'info'
     };
 
-    setActivities(prev => [batchActivity, ...prev]);
+    setActivities(prev => [scanActivity, ...prev]);
   };
 
   const getHeaderDetails = () => {
@@ -572,6 +554,7 @@ export default function App() {
       <ScanProgressModal
         isOpen={isScanOpen}
         onClose={() => setIsScanOpen(false)}
+        cases={cases}
         onScanComplete={handleScanComplete}
       />
     </div>

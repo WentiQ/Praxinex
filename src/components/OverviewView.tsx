@@ -194,14 +194,16 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                   <Tooltip 
                     content={({ active, payload, label }) => {
                       if (active && payload && payload.length) {
+                        const recEntry = payload.find(p => p.dataKey === 'recovered');
+                        const riskEntry = payload.find(p => p.dataKey === 'revenueAtRisk');
                         return (
-                          <div className="bg-neutral-900 text-white p-3 rounded-lg shadow-lg text-xs font-mono space-y-1 border border-neutral-800">
+                          <div className="bg-neutral-900 text-white p-3 rounded-lg shadow-lg text-xs font-mono space-y-1.5 border border-neutral-800">
                             <p className="font-semibold text-neutral-300">{label}</p>
                             <p className="text-emerald-400">
-                              Recovered: {formatINR(payload[0]?.value as number)}
+                              Recovered: {formatINR(Number(recEntry?.value || 0))}
                             </p>
-                            <p className="text-neutral-400">
-                              At Risk: {formatINR(payload[1]?.value as number)}
+                            <p className="text-neutral-300">
+                              Revenue at Risk: {formatINR(Number(riskEntry?.value || 0))}
                             </p>
                           </div>
                         );

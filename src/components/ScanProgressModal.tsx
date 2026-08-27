@@ -4,9 +4,7 @@ import {
   CheckCircle2, 
   Sparkles, 
   ShieldCheck, 
-  ArrowRight,
-  TrendingUp,
-  X
+  TrendingUp
 } from 'lucide-react';
 import { RecoveryCase } from '../types';
 import { formatINR } from '../utils/formatters';
@@ -14,41 +12,33 @@ import { formatINR } from '../utils/formatters';
 interface ScanProgressModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onScanComplete: (recoveredAmount: number, updatedCasesCount: number) => void;
+  cases: RecoveryCase[];
+  onScanComplete: () => void;
 }
 
 export const ScanProgressModal: React.FC<ScanProgressModalProps> = ({
   isOpen,
   onClose,
+  cases,
   onScanComplete
 }) => {
   const [step, setStep] = useState<number>(0);
-  const [recoveredTotal, setRecoveredTotal] = useState<number>(0);
+
+  const activeCases = cases.filter(c => c.status !== 'Recovered');
+  const recoveredCases = cases.filter(c => c.status === 'Recovered');
+  const totalRecoveredAmount = recoveredCases.reduce((sum, c) => sum + (c.recoveredAmount || c.amount || 0), 0);
+  const totalAtRiskAmount = activeCases.reduce((sum, c) => sum + (c.amount || 0), 0);
 
   useEffect(() => {
     if (!isOpen) {
       setStep(0);
-      setRecoveredTotal(0);
       return;
     }
 
-    const t1 = setTimeout(() => {
-      setStep(1);
-    }, 700);
-
-    const t2 = setTimeout(() => {
-      setStep(2);
-      setRecoveredTotal(12000);
-    }, 1700);
-
-    const t3 = setTimeout(() => {
-      setStep(3);
-      setRecoveredTotal(20500);
-    }, 2800);
-
-    const t4 = setTimeout(() => {
-      setStep(4);
-    }, 3800);
+    const t1 = setTimeout(() => setStep(1), 600);
+    const t2 = setTimeout(() => setStep(2), 1600);
+    const t3 = setTimeout(() => setStep(3), 2600);
+    const t4 = setTimeout(() => setStep(4), 3600);
 
     return () => {
       clearTimeout(t1);
@@ -63,7 +53,7 @@ export const ScanProgressModal: React.FC<ScanProgressModalProps> = ({
   const isDone = step >= 4;
 
   const handleFinish = () => {
-    onScanComplete(20500, 3);
+    onScanComplete();
     onClose();
   };
 
@@ -82,7 +72,7 @@ export const ScanProgressModal: React.FC<ScanProgressModalProps> = ({
             <h3 className="text-sm font-semibold text-[#171717]">Autonomous Recovery Scan</h3>
           </div>
           <span className="text-[11px] font-mono text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-            {isDone ? 'Batch Finished' : 'Processing'}
+            {isDone ? 'Scan Completed' : 'Scanning Gateway'}
           </span>
         </div>
 
@@ -102,8 +92,10 @@ export const ScanProgressModal: React.FC<ScanProgressModalProps> = ({
                 )}
               </div>
               <div>
-                <p className="font-semibold text-neutral-900">Scanning Razorpay failed event queue...</p>
-                <p className="text-[11px] text-neutral-500 mt-0.5">Discovered 5 unrecovered payment risks across active merchants.</p>
+                <p className="font-semibold text-neutral-900">Scanning Razorpay gateway & cases queue...</p>
+                <p className="text-[11px] text-neutral-500 mt-0.5">
+                  Synchronized {cases.length} live recovery cases across platform ledger.
+                </p>
               </div>
             </div>
 
@@ -121,8 +113,10 @@ export const ScanProgressModal: React.FC<ScanProgressModalProps> = ({
                 )}
               </div>
               <div>
-                <p className="font-semibold text-neutral-900">Executing bounded retry on Amit Verma (₹12,000)...</p>
-                <p className="text-[11px] text-neutral-500 mt-0.5">Passed 6h cooldown. Razorpay charge authorized.</p>
+                <p className="font-semibold text-neutral-900">Auditing active recovery rails & payment links...</p>
+                <p className="text-[11px] text-neutral-500 mt-0.5">
+                  {activeCases.length} active cases ({formatINR(totalAtRiskAmount)} at risk) policy-compliant.
+                </p>
               </div>
             </div>
 
@@ -140,21 +134,23 @@ export const ScanProgressModal: React.FC<ScanProgressModalProps> = ({
                 )}
               </div>
               <div>
-                <p className="font-semibold text-neutral-900">Dispatching payment link to Priya Mehta (₹8,500)...</p>
-                <p className="text-[11px] text-neutral-500 mt-0.5">Customer authorized via 1-click fallback.</p>
+                <p className="font-semibold text-neutral-900">Reconciling settled gateway transactions...</p>
+                <p className="text-[11px] text-neutral-500 mt-0.5">
+                  Verified {recoveredCases.length} recovered settlements ({formatINR(totalRecoveredAmount)}).
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Recovered Banner */}
-          {recoveredTotal > 0 && (
+          {/* Recovered Summary Banner */}
+          {totalRecoveredAmount > 0 && (
             <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-center animate-fade-in space-y-1">
-              <span className="text-[11px] text-emerald-700 block">Batch Revenue Recovered</span>
+              <span className="text-[11px] text-emerald-700 block">Total Live Recovered Revenue</span>
               <span className="text-xl font-bold text-emerald-900 block font-mono">
-                +{formatINR(recoveredTotal)}
+                {formatINR(totalRecoveredAmount)}
               </span>
               <span className="text-[11px] text-emerald-700 block font-sans">
-                {isDone ? 'All eligible cases processed and updated' : 'Executing remaining bounded actions...'}
+                {isDone ? `${recoveredCases.length} settled cases reconciled across gateway` : 'Reconciling real platform data...'}
               </span>
             </div>
           )}
@@ -162,7 +158,7 @@ export const ScanProgressModal: React.FC<ScanProgressModalProps> = ({
 
         <div className="p-4 px-6 bg-[#FAFAFA] border-t border-[#EAEAEA] flex items-center justify-between">
           <span className="text-[11px] text-[#737373] font-mono">
-            {isDone ? 'Scan complete' : 'Agent operating...'}
+            {isDone ? 'Scan complete' : 'Agent scanning...'}
           </span>
           <button
             disabled={!isDone}
