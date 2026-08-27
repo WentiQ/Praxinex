@@ -33,9 +33,9 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 }) => {
   if (!isOpen || !caseItem) return null;
 
-  const isRecovered = caseItem.status === 'Recovered';
-  const isNeedsReview = caseItem.status === 'Needs review';
-  const isAwaiting = caseItem.status === 'Awaiting payment';
+  const isRecovered = caseItem.status === 'Recovered' || caseItem.recommendedAction.toLowerCase().includes('recovered') || caseItem.recommendedAction.toLowerCase().includes('none') || Boolean(caseItem.recoveredAmount && caseItem.recoveredAmount > 0);
+  const isNeedsReview = !isRecovered && caseItem.status === 'Needs review';
+  const isAwaiting = !isRecovered && (caseItem.status === 'Awaiting payment' || caseItem.status === 'In progress');
 
   return (
     <div 
@@ -78,7 +78,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                       : 'bg-neutral-500'
                   }`}
                 ></span>
-                <span>{caseItem.status}</span>
+                <span>{isRecovered ? 'Recovered' : caseItem.status}</span>
               </span>
             </div>
 
@@ -210,9 +210,16 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                   <span className="text-[11px] text-[#737373] font-medium block">
                     Recommended action
                   </span>
-                  <span className="text-base font-semibold text-[#171717] mt-0.5 block">
-                    {caseItem.recommendedAction}
-                  </span>
+                  <div className="flex items-center space-x-2 mt-0.5">
+                    <span className="text-base font-semibold text-[#171717]">
+                      {isRecovered ? 'None (Payment Settled)' : caseItem.recommendedAction}
+                    </span>
+                    {isRecovered && (
+                      <span className="text-[10px] font-mono px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded font-medium">
+                        ✓ Recovered
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div>
@@ -220,7 +227,9 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                     Why
                   </span>
                   <p className="text-xs text-[#171717] leading-relaxed bg-white border border-[#EAEAEA] p-3 rounded-md">
-                    “{caseItem.aiWhy}”
+                    “{isRecovered 
+                      ? `Transaction of ${formatINR(caseItem.recoveredAmount || caseItem.amount)} has been successfully captured and settled on Razorpay. Revenue recovery complete.` 
+                      : caseItem.aiWhy}”
                   </p>
                 </div>
               </div>

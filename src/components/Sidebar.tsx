@@ -17,6 +17,7 @@ import { MerchantProfile } from '../types';
 
 export type NavigationTab = 
   | 'overview' 
+  | 'praxinex'
   | 'cases' 
   | 'payments' 
   | 'customers' 
@@ -32,6 +33,7 @@ interface SidebarProps {
   activeCaseCount: number;
   merchant: MerchantProfile;
   onOpenSettings: () => void;
+  onOpenPraxinexCopilot?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -40,9 +42,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeCaseCount,
   merchant,
   onOpenSettings,
+  onOpenPraxinexCopilot
 }) => {
   const navItems = [
     { id: 'overview' as NavigationTab, label: 'Overview', icon: LayoutDashboard },
+    { id: 'praxinex' as NavigationTab, label: 'Praxinex AI', icon: Sparkles, isAi: true },
     { id: 'cases' as NavigationTab, label: 'Recovery Cases', icon: ShieldAlert, badge: activeCaseCount },
     { id: 'payments' as NavigationTab, label: 'Payments', icon: CreditCard },
     { id: 'customers' as NavigationTab, label: 'Customers', icon: Users },
@@ -112,16 +116,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 key={item.id}
                 id={`nav-item-${item.id}`}
                 onClick={() => onSelectTab(item.id)}
-                className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-md transition-all duration-150 text-left ${
+                className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-md transition-all duration-150 text-left cursor-pointer ${
                   isActive
                     ? 'bg-[#171717] text-white shadow-xs'
+                    : item.isAi
+                    ? 'text-emerald-800 bg-emerald-50/70 hover:bg-emerald-100/70 border border-emerald-200/60'
                     : 'text-[#525252] hover:text-[#171717] hover:bg-[#F4F4F5]'
                 }`}
               >
                 <div className="flex items-center space-x-2.5">
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-[#737373]'}`} />
-                  <span>{item.label}</span>
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-white' : item.isAi ? 'text-emerald-600' : 'text-[#737373]'}`} />
+                  <span className={item.isAi && !isActive ? 'font-semibold text-emerald-900' : ''}>{item.label}</span>
                 </div>
+                {item.isAi && (
+                  <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded ${
+                    isActive ? 'bg-emerald-500/30 text-emerald-300' : 'bg-emerald-600 text-white'
+                  }`}>
+                    COPILOT
+                  </span>
+                )}
                 {item.badge !== undefined && item.badge > 0 && (
                   <span
                     className={`text-[10px] font-mono font-medium px-1.5 py-0.2 rounded-full ${

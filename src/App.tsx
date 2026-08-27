@@ -10,10 +10,13 @@ import { AnalyticsView } from './components/AnalyticsView';
 import { PoliciesView } from './components/PoliciesView';
 import { IntegrationsView } from './components/IntegrationsView';
 import { SettingsView } from './components/SettingsView';
+import { PraxinexView } from './components/PraxinexView';
+import { PraxinexChat } from './components/PraxinexChat';
 import { CaseDetailModal } from './components/CaseDetailModal';
 import { ActionExecutionModal } from './components/ActionExecutionModal';
 import { SimulateFailureModal } from './components/SimulateFailureModal';
 import { ScanProgressModal } from './components/ScanProgressModal';
+import { Sparkles } from 'lucide-react';
 import { 
   INITIAL_CASES, 
   INITIAL_ACTIVITIES, 
@@ -23,7 +26,7 @@ import {
   CUSTOMER_DIRECTORY, 
   REVENUE_TREND_DATA 
 } from './data/mockData';
-import { RecoveryCase, ActivityEvent, MerchantProfile, RecoveryPolicy, PaymentRecord, CustomerRecord } from './types';
+import { RecoveryCase, ActivityEvent, MerchantProfile, RecoveryPolicy, PaymentRecord, CustomerRecord, ActiveTab } from './types';
 
 export default function App() {
   // Navigation
@@ -33,7 +36,21 @@ export default function App() {
   // Core Data
   const [cases, setCases] = useState<RecoveryCase[]>(INITIAL_CASES);
   const [activities, setActivities] = useState<ActivityEvent[]>(INITIAL_ACTIVITIES);
-  const [merchant, setMerchant] = useState<MerchantProfile>(INITIAL_MERCHANT);
+  const [merchant, setMerchant] = useState<MerchantProfile>(() => {
+    try {
+      const saved = localStorage.getItem('recovery_merchant_profile');
+      if (saved) return { ...INITIAL_MERCHANT, ...JSON.parse(saved) };
+    } catch {}
+    return INITIAL_MERCHANT;
+  });
+
+  const handleUpdateMerchant = (updated: MerchantProfile) => {
+    setMerchant(updated);
+    try {
+      localStorage.setItem('recovery_merchant_profile', JSON.stringify(updated));
+    } catch {}
+  };
+
   const [policies, setPolicies] = useState<RecoveryPolicy>(INITIAL_POLICIES);
   const [payments, setPayments] = useState<PaymentRecord[]>(PAYMENT_LEDGER);
   const [customers, setCustomers] = useState<CustomerRecord[]>(CUSTOMER_DIRECTORY);
@@ -45,6 +62,19 @@ export default function App() {
   const [executingCase, setExecutingCase] = useState<RecoveryCase | null>(null);
   const [isSimulateOpen, setIsSimulateOpen] = useState<boolean>(false);
   const [isScanOpen, setIsScanOpen] = useState<boolean>(false);
+  const [isPraxinexChatOpen, setIsPraxinexChatOpen] = useState<boolean>(false);
+
+  // Global Keyboard Shortcut (Ctrl+K / Cmd+K) to trigger Praxinex
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsPraxinexChatOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Live Razorpay Sync Function
   const syncLiveRazorpayData = useCallback(async (quiet = false) => {
@@ -67,13 +97,18 @@ export default function App() {
                   ...existing.timeline,
                   ...rc.timeline.filter((t: any) => !existingTimelineIds.has(t.id))
                 ];
+
+                // Check if this case is recovered from server or existing
+                const isRecovered = rc.status === 'Recovered' || rc.recommendedAction === 'None (Recovered)' || existing.status === 'Recovered' || Boolean(rc.recoveredAmount && rc.recoveredAmount > 0);
+
                 return {
                   ...rc,
                   paymentLinkUrl: rc.paymentLinkUrl || existing.paymentLinkUrl,
                   razorpayPaymentId: rc.razorpayPaymentId || existing.razorpayPaymentId,
-                  status: (existing.status === 'Recovered' || existing.status === 'Awaiting payment') ? existing.status : rc.status,
-                  recoveredAmount: existing.recoveredAmount || rc.recoveredAmount,
-                  recoveredAt: existing.recoveredAt || rc.recoveredAt,
+                  status: isRecovered ? 'Recovered' : rc.status,
+                  recommendedAction: isRecovered ? 'None (Recovered)' : rc.recommendedAction,
+                  recoveredAmount: isRecovered ? (rc.recoveredAmount || rc.amount || existing.recoveredAmount) : 0,
+                  recoveredAt: isRecovered ? (rc.recoveredAt || existing.recoveredAt || 'Captured') : undefined,
                   timeline: mergedTimeline
                 };
               }
@@ -96,11 +131,15 @@ export default function App() {
                 ...curr.timeline,
                 ...updated.timeline.filter((t: any) => !existingIds.has(t.id))
               ];
+              const isRecovered = updated.status === 'Recovered' || updated.recommendedAction === 'None (Recovered)' || curr.status === 'Recovered' || Boolean(updated.recoveredAmount && updated.recoveredAmount > 0);
               return {
                 ...curr,
                 paymentLinkUrl: updated.paymentLinkUrl || curr.paymentLinkUrl,
                 razorpayPaymentId: updated.razorpayPaymentId || curr.razorpayPaymentId,
-                status: (curr.status === 'Recovered' || curr.status === 'Awaiting payment') ? curr.status : updated.status,
+                status: isRecovered ? 'Recovered' : updated.status,
+                recommendedAction: isRecovered ? 'None (Recovered)' : updated.recommendedAction,
+                recoveredAmount: isRecovered ? (updated.recoveredAmount || updated.amount || curr.recoveredAmount) : 0,
+                recoveredAt: isRecovered ? (updated.recoveredAt || curr.recoveredAt || 'Captured') : undefined,
                 timeline: mergedTimeline
               };
             }
@@ -156,11 +195,11 @@ export default function App() {
 
   // Computed Financial Metrics
   const totalAtRisk = cases.reduce((sum, c) => sum + (c.status !== 'Recovered' ? c.amount : 0), 0);
-  const totalRecovered = cases.reduce((sum, c) => sum + (c.recoveredAmount || 0), 87500);
+  const totalRecovered = cases.reduce((sum, c) => sum + (c.status === 'Recovered' ? (c.recoveredAmount || c.amount) : 0), 0);
   const activeCasesCount = cases.filter(c => c.status !== 'Recovered').length;
-  const recoveryRate = (totalRecovered / (totalRecovered + totalAtRisk || 1)) * 100;
+  const recoveryRate = Math.round((totalRecovered / ((totalRecovered + totalAtRisk) || 1)) * 100);
   const casesAnalyzed = cases.length;
-  const actionsExecuted = 31 + cases.filter(c => c.status === 'Recovered').length;
+  const actionsExecuted = activities.length || (cases.filter(c => c.status === 'Recovered').length + 5);
 
   // Handlers
   const handleOpenCase = (caseItem: RecoveryCase) => {
@@ -316,6 +355,8 @@ export default function App() {
     switch (currentTab) {
       case 'overview':
         return { title: 'Overview', subtitle: 'Revenue recovery at a glance' };
+      case 'praxinex':
+        return { title: 'Praxinex AI Agent', subtitle: 'Autonomous omniscient platform copilot & execution engine' };
       case 'cases':
         return { title: 'Recovery Cases', subtitle: 'Detailed view of cases requiring recovery action' };
       case 'payments':
@@ -340,7 +381,7 @@ export default function App() {
   const headerInfo = getHeaderDetails();
 
   return (
-    <div className="flex h-screen bg-[#F8F9FA] overflow-hidden select-none font-sans" id="recovery-app-root">
+    <div className="flex h-screen bg-[#F8F9FA] overflow-hidden select-none font-sans relative" id="recovery-app-root">
       {/* Left Sidebar */}
       <Sidebar
         currentTab={currentTab}
@@ -348,6 +389,7 @@ export default function App() {
         activeCaseCount={activeCasesCount}
         merchant={merchant}
         onOpenSettings={() => setCurrentTab('settings')}
+        onOpenPraxinexCopilot={() => setIsPraxinexChatOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -362,6 +404,7 @@ export default function App() {
           merchant={merchant}
           dateRange={dateRange}
           setDateRange={setDateRange}
+          onOpenPraxinex={() => setIsPraxinexChatOpen(true)}
         />
 
         {/* View Switcher */}
@@ -380,6 +423,20 @@ export default function App() {
               onViewActivity={() => setCurrentTab('activity')}
               onViewAllCases={() => setCurrentTab('cases')}
               onExecuteAction={handleStartExecuteAction}
+            />
+          )}
+
+          {currentTab === 'praxinex' && (
+            <PraxinexView
+              cases={cases}
+              payments={payments}
+              customers={customers}
+              activities={activities}
+              merchant={merchant}
+              onNavigateTab={setCurrentTab}
+              onOpenCase={handleOpenCase}
+              onExecuteAction={handleStartExecuteAction}
+              onSyncGateway={() => syncLiveRazorpayData(false)}
             />
           )}
 
@@ -435,7 +492,7 @@ export default function App() {
           {currentTab === 'integrations' && (
             <IntegrationsView
               merchant={merchant}
-              onUpdateMerchant={setMerchant}
+              onUpdateMerchant={handleUpdateMerchant}
               onSyncRazorpay={syncLiveRazorpayData}
               isSyncing={isSyncing}
             />
@@ -444,11 +501,49 @@ export default function App() {
           {currentTab === 'settings' && (
             <SettingsView
               merchant={merchant}
-              onUpdateMerchant={setMerchant}
+              onUpdateMerchant={handleUpdateMerchant}
             />
           )}
         </main>
       </div>
+
+      {/* Floating Praxinex AI Assistant Trigger Pill (Bottom-Right) */}
+      {!isPraxinexChatOpen && (
+        <button
+          id="praxinex-floating-launcher-btn"
+          onClick={() => setIsPraxinexChatOpen(true)}
+          className="fixed bottom-6 right-6 z-40 flex items-center space-x-2.5 px-4 py-3 bg-neutral-900 hover:bg-black text-white rounded-full shadow-2xl hover:scale-105 transition-all duration-200 border border-neutral-700 cursor-pointer group"
+          title="Open Praxinex AI Copilot (Ctrl+K)"
+        >
+          <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 border border-emerald-400/30">
+            <Sparkles className="w-3.5 h-3.5 group-hover:rotate-12 transition-transform" />
+          </div>
+          <div className="text-left">
+            <div className="flex items-center space-x-1.5">
+              <span className="text-xs font-bold font-sans">Ask Praxinex</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            </div>
+          </div>
+          <span className="text-[10px] font-mono text-neutral-400 bg-white/10 px-1.5 py-0.5 rounded ml-1">
+            ⌘K
+          </span>
+        </button>
+      )}
+
+      {/* Praxinex AI Assistant Drawer */}
+      <PraxinexChat
+        isOpen={isPraxinexChatOpen}
+        onClose={() => setIsPraxinexChatOpen(false)}
+        cases={cases}
+        payments={payments}
+        customers={customers}
+        activities={activities}
+        merchant={merchant}
+        onNavigateTab={setCurrentTab}
+        onOpenCase={handleOpenCase}
+        onExecuteAction={handleStartExecuteAction}
+        onSyncGateway={() => syncLiveRazorpayData(false)}
+      />
 
       {/* Case Detail Modal / Drawer */}
       <CaseDetailModal

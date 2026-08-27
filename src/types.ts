@@ -132,3 +132,47 @@ export interface CustomerRecord {
   riskCategory: 'Low Risk' | 'Moderate' | 'High Risk';
   lastSeen: string;
 }
+
+export type ActiveTab = 
+  | 'overview' 
+  | 'cases' 
+  | 'payments' 
+  | 'customers' 
+  | 'analytics' 
+  | 'activity' 
+  | 'policies' 
+  | 'integrations' 
+  | 'settings'
+  | 'praxinex';
+
+export interface PraxinexAction {
+  id: string;
+  type: 'generate_payment_link' | 'navigate' | 'open_case' | 'sync_data' | 'escalate_case' | 'retry_charge';
+  label: string;
+  payload?: any;
+  status?: 'pending' | 'executed' | 'failed';
+  resultText?: string;
+}
+
+export interface PraxinexMessage {
+  id: string;
+  sender: 'user' | 'praxinex';
+  text: string;
+  timestamp: string;
+  thoughts?: string[];
+  actions?: PraxinexAction[];
+  caseCards?: RecoveryCase[];
+  paymentLinkCard?: {
+    id: string;
+    url: string;
+    amount: number;
+    customerName: string;
+    description: string;
+  };
+  metricsHighlight?: {
+    revenueAtRisk: number;
+    recovered: number;
+    recoveryRate: number;
+    activeCases: number;
+  };
+}

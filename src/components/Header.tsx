@@ -19,6 +19,7 @@ interface HeaderProps {
   merchant: MerchantProfile;
   dateRange: string;
   setDateRange: (range: string) => void;
+  onOpenPraxinex?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -29,7 +30,8 @@ export const Header: React.FC<HeaderProps> = ({
   onSimulateFailure,
   merchant,
   dateRange,
-  setDateRange
+  setDateRange,
+  onOpenPraxinex
 }) => {
   return (
     <header 
@@ -66,11 +68,27 @@ export const Header: React.FC<HeaderProps> = ({
           <Calendar className="w-3.5 h-3.5 text-[#737373] absolute right-2 top-2.5 pointer-events-none" />
         </div>
 
+        {/* Ask Praxinex AI Button */}
+        {onOpenPraxinex && (
+          <button
+            id="ask-praxinex-header-btn"
+            onClick={onOpenPraxinex}
+            className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-950 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-md transition-all shadow-2xs cursor-pointer group"
+            title="Open Praxinex AI Assistant (Ctrl+K)"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
+            <span>Ask Praxinex</span>
+            <span className="hidden lg:inline text-[10px] font-mono text-emerald-700 bg-white/70 px-1 py-0.2 rounded border border-emerald-200">
+              ⌘K
+            </span>
+          </button>
+        )}
+
         {/* Simulate Payment Failure Button (For interactive demo) */}
         <button
           id="simulate-risk-button"
           onClick={onSimulateFailure}
-          className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 bg-white border border-[#E7E7E7] hover:bg-neutral-50 rounded-md transition-colors"
+          className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 bg-white border border-[#E7E7E7] hover:bg-neutral-50 rounded-md transition-colors cursor-pointer"
           title="Inject a test failure event into the system"
         >
           <PlusCircle className="w-3.5 h-3.5 text-neutral-500" />

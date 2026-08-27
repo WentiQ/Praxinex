@@ -46,7 +46,12 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
   });
 
   const totalFilteredRisk = filteredCases.reduce((sum, c) => sum + (c.status !== 'Recovered' ? c.amount : 0), 0);
-  const totalFilteredRecovered = filteredCases.reduce((sum, c) => sum + (c.recoveredAmount || 0), 0);
+  const totalFilteredRecovered = filteredCases.reduce((sum, c) => sum + (c.status === 'Recovered' ? (c.recoveredAmount || c.amount) : 0), 0);
+
+  const allCount = cases.length;
+  const needsReviewCount = cases.filter(c => c.status === 'Needs review').length;
+  const awaitingCount = cases.filter(c => c.status === 'Awaiting payment').length;
+  const recoveredCount = cases.filter(c => c.status === 'Recovered').length;
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6" id="recovery-cases-container">
@@ -55,21 +60,80 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
         <div>
           <h2 className="text-base font-semibold text-[#171717]">Recovery Cases</h2>
           <p className="text-xs text-[#737373]">
-            {filteredCases.length} total cases matching current criteria
+            {filteredCases.length} of {cases.length} cases matching filters
           </p>
         </div>
 
         <div className="flex items-center space-x-6 text-xs font-mono">
           <div>
-            <span className="text-[#737373] block text-[11px]">Active Risk</span>
+            <span className="text-[#737373] block text-[11px]">Active Risk ({cases.filter(c => c.status !== 'Recovered').length} cases)</span>
             <span className="text-base font-bold text-neutral-900">{formatINR(totalFilteredRisk)}</span>
           </div>
           <div className="h-8 w-[1px] bg-neutral-200"></div>
           <div>
-            <span className="text-[#737373] block text-[11px]">Recovered</span>
+            <span className="text-[#737373] block text-[11px]">Recovered ({recoveredCount} cases)</span>
             <span className="text-base font-bold text-emerald-800">{formatINR(totalFilteredRecovered)}</span>
           </div>
         </div>
+      </div>
+
+      {/* Quick Status Pill Filter Tabs */}
+      <div className="flex items-center space-x-2 overflow-x-auto pb-1">
+        <button
+          onClick={() => setSelectedStatus('all')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center space-x-1.5 cursor-pointer ${
+            selectedStatus === 'all'
+              ? 'bg-neutral-900 text-white'
+              : 'bg-white border border-[#E7E7E7] text-neutral-600 hover:bg-neutral-50'
+          }`}
+        >
+          <span>All Cases</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${selectedStatus === 'all' ? 'bg-neutral-700 text-neutral-200' : 'bg-neutral-100 text-neutral-600'}`}>
+            {allCount}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setSelectedStatus('Needs review')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center space-x-1.5 cursor-pointer ${
+            selectedStatus === 'Needs review'
+              ? 'bg-rose-700 text-white'
+              : 'bg-white border border-[#E7E7E7] text-neutral-600 hover:bg-neutral-50'
+          }`}
+        >
+          <span>Needs Review</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${selectedStatus === 'Needs review' ? 'bg-rose-900 text-rose-100' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+            {needsReviewCount}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setSelectedStatus('Awaiting payment')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center space-x-1.5 cursor-pointer ${
+            selectedStatus === 'Awaiting payment'
+              ? 'bg-blue-700 text-white'
+              : 'bg-white border border-[#E7E7E7] text-neutral-600 hover:bg-neutral-50'
+          }`}
+        >
+          <span>Awaiting Payment</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${selectedStatus === 'Awaiting payment' ? 'bg-blue-900 text-blue-100' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
+            {awaitingCount}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setSelectedStatus('Recovered')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center space-x-1.5 cursor-pointer ${
+            selectedStatus === 'Recovered'
+              ? 'bg-emerald-700 text-white'
+              : 'bg-white border border-[#E7E7E7] text-neutral-600 hover:bg-neutral-50'
+          }`}
+        >
+          <span>Recovered</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${selectedStatus === 'Recovered' ? 'bg-emerald-900 text-emerald-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+            {recoveredCount}
+          </span>
+        </button>
       </div>
 
       {/* Filter and Search Bar */}
@@ -115,20 +179,6 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
             <option value="Subscription lapsed">Subscription Lapsed</option>
             <option value="Checkout abandoned">Checkout Abandoned</option>
           </select>
-
-          {/* Status */}
-          <select
-            id="filter-status-select"
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
-            className="text-xs bg-white border border-[#E7E7E7] rounded-lg px-3 py-2 text-neutral-800 focus:outline-none focus:ring-1 focus:ring-neutral-900"
-          >
-            <option value="all">All Statuses</option>
-            <option value="Recovered">Recovered</option>
-            <option value="In progress">In Progress</option>
-            <option value="Awaiting payment">Awaiting Payment</option>
-            <option value="Needs review">Needs Review</option>
-          </select>
         </div>
       </div>
 
@@ -159,9 +209,9 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
                 </tr>
               ) : (
                 filteredCases.map((c) => {
-                  const isRecovered = c.status === 'Recovered';
-                  const isNeedsReview = c.status === 'Needs review';
-                  const isAwaiting = c.status === 'Awaiting payment';
+                  const isRecovered = c.status === 'Recovered' || c.recommendedAction.toLowerCase().includes('recovered') || c.recommendedAction.toLowerCase().includes('none') || Boolean(c.recoveredAmount && c.recoveredAmount > 0);
+                  const isNeedsReview = !isRecovered && c.status === 'Needs review';
+                  const isAwaiting = !isRecovered && (c.status === 'Awaiting payment' || c.status === 'In progress');
 
                   return (
                     <tr
@@ -222,14 +272,23 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
                       </td>
 
                       {/* Recommended Action */}
-                      <td className="py-3.5 px-4 text-neutral-800">
+                      <td className="py-3.5 px-4">
                         <div className="flex items-center space-x-1.5">
-                          <span className="font-medium text-xs text-neutral-900">
-                            {c.recommendedAction}
-                          </span>
-                          <span className="text-[10px] text-neutral-400 font-mono">
-                            ({c.recoveryProbability}%)
-                          </span>
+                          {isRecovered ? (
+                            <span className="inline-flex items-center space-x-1 text-[11px] font-mono font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600 mr-0.5" />
+                              <span>None (Recovered)</span>
+                            </span>
+                          ) : (
+                            <>
+                              <span className="font-medium text-xs text-neutral-900">
+                                {c.recommendedAction}
+                              </span>
+                              <span className="text-[10px] text-neutral-400 font-mono">
+                                ({c.recoveryProbability}%)
+                              </span>
+                            </>
+                          )}
                         </div>
                       </td>
 
@@ -257,7 +316,7 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
                                 : 'bg-neutral-500'
                             }`}
                           ></span>
-                          <span>{c.status}</span>
+                          <span>{isRecovered ? 'Recovered' : c.status}</span>
                         </span>
                       </td>
 
@@ -269,8 +328,9 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
                       {/* Action */}
                       <td className="py-3.5 px-5 text-right">
                         {isRecovered ? (
-                          <span className="text-emerald-700 text-[11px] font-mono font-medium">
-                            ✓ Recovered
+                          <span className="inline-flex items-center space-x-1 text-emerald-700 text-xs font-mono font-semibold bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Recovered</span>
                           </span>
                         ) : (
                           <button
@@ -279,7 +339,7 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
                               e.stopPropagation();
                               onExecuteAction(c);
                             }}
-                            className="px-2.5 py-1 text-[11px] font-medium text-neutral-900 bg-white border border-[#D4D4D4] hover:bg-neutral-50 hover:border-neutral-400 rounded transition-colors shadow-2xs"
+                            className="px-2.5 py-1 text-[11px] font-medium text-neutral-900 bg-white border border-[#D4D4D4] hover:bg-neutral-50 hover:border-neutral-400 rounded transition-colors shadow-2xs cursor-pointer"
                           >
                             {c.recommendedAction}
                           </button>
