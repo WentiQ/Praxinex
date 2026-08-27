@@ -1068,6 +1068,13 @@ app.get('/api/razorpay/sync', async (req, res) => {
       }
     });
 
+    // Sort live activities from most recent (newest) to oldest
+    liveActivitiesStore.sort((a: any, b: any) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return timeB - timeA;
+    });
+
     res.json({
       success: true,
       syncedAt: new Date().toISOString(),

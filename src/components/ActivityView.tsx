@@ -35,11 +35,18 @@ export const ActivityView: React.FC<ActivityViewProps> = ({
     setExpandedIds(next);
   };
 
-  const filteredActivities = activities.filter((act) => {
-    if (filterType === 'success') return act.resultStatus === 'success';
-    if (filterType === 'escalated') return act.resultStatus === 'warning';
-    return true;
-  });
+  const filteredActivities = activities
+    .filter((act) => {
+      if (filterType === 'success') return act.resultStatus === 'success';
+      if (filterType === 'escalated') return act.resultStatus === 'warning';
+      return true;
+    })
+    .slice()
+    .sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : (a.id ? parseInt(a.id.replace(/\D/g, '')) || 0 : 0);
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : (b.id ? parseInt(b.id.replace(/\D/g, '')) || 0 : 0);
+      return timeB - timeA; // Recent (newest) to oldest
+    });
 
   return (
     <div className="p-8 max-w-5xl mx-auto space-y-6" id="agent-activity-page">
