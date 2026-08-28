@@ -1,0 +1,483 @@
+{
+  "merchant": null,
+  "cases": [
+    {
+      "id": "RC-PL-bZxwmC",
+      "risk": "Medium",
+      "aiWhy": "Payment of ₹10,000 has been captured & settled via Razorpay (ref: pay_TUSYQO2uJeYVDC). Revenue recovery complete.",
+      "issue": "Payment recovered",
+      "amount": 10000,
+      "status": "Recovered",
+      "updated": "Today",
+      "timeline": [
+        {
+          "id": "t-pl-plink_TUPl2G0SbZxwmC",
+          "type": "success",
+          "title": "Payment link settled & recovered",
+          "timestamp": "2026-08-26T13:27:05.000Z",
+          "actionType": "Payment link",
+          "description": "Razorpay payment link (plink_TUPl2G0SbZxwmC) active: https://rzp.io/rzp/WT6797L (noeon subscription) for ₹10,000.",
+          "timeDisplay": "26 Aug 2026, 06:57 pm"
+        },
+        {
+          "id": "t-pl-plink_TURbmeTbhsO6uX",
+          "type": "action",
+          "title": "Payment link generated on Razorpay",
+          "timestamp": "2026-08-26T15:15:42.000Z",
+          "actionType": "Payment link",
+          "description": "Razorpay payment link (plink_TURbmeTbhsO6uX) active: https://rzp.io/rzp/SpWPx36 (Revenue Recovery: Settlement for Case RC-PL-bZxwmC) for ₹10,000.",
+          "timeDisplay": "26 Aug 2026, 08:45 pm"
+        },
+        {
+          "id": "t-pay-pay_TURcHja37TuR1o",
+          "type": "failure",
+          "title": "Payment failed (Your payment has been cancelled. Try again or complete the payment later.)",
+          "timestamp": "2026-08-26T15:16:12.000Z",
+          "description": "Transaction attempt pay_TURcHja37TuR1o for ₹10,000 failed (Your payment has been cancelled. Try again or complete the payment later.).",
+          "timeDisplay": "26 Aug 2026, 08:46 pm"
+        },
+        {
+          "id": "t-pay-pay_TURuKFWgWtofmW",
+          "type": "failure",
+          "title": "Payment failed (Your payment has been cancelled. Try again or complete the payment later.)",
+          "timestamp": "2026-08-26T15:33:16.000Z",
+          "description": "Transaction attempt pay_TURuKFWgWtofmW for ₹10,000 failed (Your payment has been cancelled. Try again or complete the payment later.).",
+          "timeDisplay": "26 Aug 2026, 09:03 pm"
+        },
+        {
+          "id": "t-pl-plink_TUS0CwTaOSjfHs",
+          "type": "action",
+          "title": "Payment link generated on Razorpay",
+          "timestamp": "2026-08-26T15:38:50.000Z",
+          "actionType": "Payment link",
+          "description": "Razorpay payment link (plink_TUS0CwTaOSjfHs) active: https://rzp.io/rzp/tStK5YA (Revenue Recovery: Settlement for Case RC-PL-bZxwmC) for ₹10,000.",
+          "timeDisplay": "26 Aug 2026, 09:08 pm"
+        },
+        {
+          "id": "t-pay-pay_TUS1HVYcpWJY1w",
+          "type": "failure",
+          "title": "Payment failed (Your payment has been cancelled. Try again or complete the payment later.)",
+          "timestamp": "2026-08-26T15:39:52.000Z",
+          "description": "Transaction attempt pay_TUS1HVYcpWJY1w for ₹10,000 failed (Your payment has been cancelled. Try again or complete the payment later.).",
+          "timeDisplay": "26 Aug 2026, 09:09 pm"
+        },
+        {
+          "id": "t-pay-pay_TUSYQO2uJeYVDC",
+          "type": "success",
+          "title": "Payment captured: ₹10,000",
+          "timestamp": "2026-08-26T16:11:14.000Z",
+          "description": "Razorpay confirmed capture of ₹10,000 via card (ref: pay_TUSYQO2uJeYVDC). Revenue recovered.",
+          "timeDisplay": "26 Aug 2026, 09:41 pm"
+        },
+        {
+          "id": "t-bzx-init",
+          "type": "detection",
+          "title": "Subscription Link Created",
+          "timestamp": "2026-08-27T05:07:01.814Z",
+          "actionType": "Payment link",
+          "description": "Subscription recovery link (plink_TUPl2G0SbZxwmC) created for ₹10,000.",
+          "timeDisplay": "Yesterday, 06:57 pm"
+        }
+      ],
+      "createdAt": "2026-08-28T05:07:01.814Z",
+      "companyName": "NOEON Robotics",
+      "failureCode": "PAID",
+      "maxAttempts": 3,
+      "recoveredAt": "26 Aug 2026, 09:41 pm",
+      "aiPolicyNote": "Revenue recovered. No action required.",
+      "attemptCount": 1,
+      "customerName": "dineshpolavarapu66",
+      "customerEmail": "dineshpolavarapu66@gmail.com",
+      "customerPhone": "+91 7032983348",
+      "failureReason": "None (Settled)",
+      "paymentMethod": "Razorpay Dynamic Rail",
+      "policyAllowed": true,
+      "paymentLinkUrl": "https://rzp.io/rzp/WT6797L",
+      "recoveredAmount": 10000,
+      "razorpayPaymentId": "plink_TUPl2G0SbZxwmC",
+      "recommendedAction": "None (Recovered)",
+      "recoveryProbability": 100
+    },
+    {
+      "id": "RC-PL-XLGnEa",
+      "risk": "Low",
+      "aiWhy": "Live test recovery case. Autonomous multi-rail payment links active.",
+      "issue": "Payment link active",
+      "amount": 1500,
+      "status": "Awaiting payment",
+      "updated": "Today",
+      "timeline": [
+        {
+          "id": "t-pl-plink_TUPt9qr2XLGnEa",
+          "type": "action",
+          "title": "Payment link generated on Razorpay",
+          "timestamp": "2026-08-26T13:34:46.000Z",
+          "actionType": "Payment link",
+          "description": "Razorpay payment link (plink_TUPt9qr2XLGnEa) active: https://rzp.io/rzp/g8sLJtlt (AI Revenue Recovery Test Link) for ₹1,500.",
+          "timeDisplay": "26 Aug 2026, 07:04 pm"
+        },
+        {
+          "id": "t-pl-plink_TUTK6PBhw69Qpy",
+          "type": "action",
+          "title": "Payment link generated on Razorpay",
+          "timestamp": "2026-08-26T16:56:22.000Z",
+          "actionType": "Payment link",
+          "description": "Razorpay payment link (plink_TUTK6PBhw69Qpy) active: https://rzp.io/rzp/YLpaOqF (Revenue Recovery: Settlement for Case RC-PL-XLGnEa) for ₹1,500.",
+          "timeDisplay": "26 Aug 2026, 10:26 pm"
+        },
+        {
+          "id": "t-pay-pay_TUTo8MhjlOb3sD",
+          "type": "failure",
+          "title": "Payment failed (Your payment has been cancelled. Try again or complete the payment later.)",
+          "timestamp": "2026-08-26T17:24:48.000Z",
+          "description": "Transaction attempt pay_TUTo8MhjlOb3sD for ₹1,500 failed (Your payment has been cancelled. Try again or complete the payment later.).",
+          "timeDisplay": "26 Aug 2026, 10:54 pm"
+        },
+        {
+          "id": "t-xl-init",
+          "type": "detection",
+          "title": "Initial Payment Link Created",
+          "timestamp": "2026-08-27T05:07:01.814Z",
+          "actionType": "Payment link",
+          "description": "AI Revenue Recovery Test Link (plink_TUPt9qr2XLGnEa) initialized for ₹1,500.",
+          "timeDisplay": "Yesterday, 07:04 pm"
+        },
+        {
+          "id": "t-pl-plink_TUqloQkeb3eDfE",
+          "type": "action",
+          "title": "Payment link generated on Razorpay",
+          "timestamp": "2026-08-27T15:52:33.000Z",
+          "actionType": "Payment link",
+          "description": "Razorpay payment link (plink_TUqloQkeb3eDfE) active: https://rzp.io/rzp/GhQGTz3 (Settlement for Case RC-PL-XLGnEa: Test Customer) for ₹1,500.",
+          "timeDisplay": "27 Aug 2026, 09:22 pm"
+        },
+        {
+          "id": "t-pl-plink_TUrs5aLvUWtC55",
+          "type": "action",
+          "title": "Payment link generated on Razorpay",
+          "timestamp": "2026-08-27T16:57:11.000Z",
+          "actionType": "Payment link",
+          "description": "Razorpay payment link (plink_TUrs5aLvUWtC55) active: https://rzp.io/rzp/w0t8Zk2 (Settlement for Case RC-PL-XLGnEa: Test Customer) for ₹1,500.",
+          "timeDisplay": "27 Aug 2026, 10:27 pm"
+        },
+        {
+          "id": "t-pl-plink_TUrt6VCSmv3kFa",
+          "type": "action",
+          "title": "Payment link generated on Razorpay",
+          "timestamp": "2026-08-27T16:58:08.000Z",
+          "actionType": "Payment link",
+          "description": "Razorpay payment link (plink_TUrt6VCSmv3kFa) active: https://rzp.io/rzp/w14tApgk (Revenue Recovery: Settlement for Case RC-PL-XLGnEa) for ₹1,500.",
+          "timeDisplay": "27 Aug 2026, 10:28 pm"
+        },
+        {
+          "id": "t-pl-plink_TUs4VPTygfxt8J",
+          "type": "action",
+          "title": "Payment link generated on Razorpay",
+          "timestamp": "2026-08-27T17:08:56.000Z",
+          "actionType": "Payment link",
+          "description": "Razorpay payment link (plink_TUs4VPTygfxt8J) active: https://rzp.io/rzp/YqHzRRb (Revenue Recovery: Settlement for Case RC-PL-XLGnEa) for ₹1,500.",
+          "timeDisplay": "27 Aug 2026, 10:38 pm"
+        }
+      ],
+      "createdAt": "2026-08-28T05:07:01.814Z",
+      "companyName": "Test Account",
+      "failureCode": "PAYMENT_LINK_ACTIVE",
+      "maxAttempts": 3,
+      "aiPolicyNote": "Autonomous payment link policy permitted",
+      "attemptCount": 1,
+      "customerName": "Test Customer",
+      "customerEmail": "dineshpolavarapu66@gmail.com",
+      "customerPhone": "+91 7032983348",
+      "failureReason": "Awaiting payment: \"AI Revenue Recovery Test Link\"",
+      "paymentMethod": "Razorpay Dynamic Rail",
+      "policyAllowed": true,
+      "paymentLinkUrl": "https://rzp.io/rzp/g8sLJtlt",
+      "recoveredAmount": 0,
+      "razorpayPaymentId": "plink_TUPt9qr2XLGnEa",
+      "recommendedAction": "Payment link",
+      "recoveryProbability": 90
+    },
+    {
+      "id": "RC-PL-Oy4LkL",
+      "risk": "High",
+      "aiWhy": "Formal payment extension link active.",
+      "issue": "Invoice overdue",
+      "amount": 420000,
+      "status": "Awaiting payment",
+      "updated": "Today",
+      "timeline": [
+        {
+          "id": "t-pl-plink_TTDOzPXoOy4LkL",
+          "type": "action",
+          "title": "Payment link generated on Razorpay",
+          "timestamp": "2026-08-23T12:42:53.000Z",
+          "actionType": "Payment link",
+          "description": "Razorpay payment link (plink_TTDOzPXoOy4LkL) active: https://rzp.io/rzp/RZ6Q8FE (Formal 7-day Payment Extension - Invoice #inc_abc_001) for ₹4,20,000.",
+          "timeDisplay": "23 Aug 2026, 06:12 pm"
+        },
+        {
+          "id": "t-oy-init",
+          "type": "detection",
+          "title": "Payment Extension Link Created",
+          "timestamp": "2026-08-25T05:07:01.814Z",
+          "actionType": "Payment link",
+          "description": "Formal 7-day payment extension issued for ₹4,20,000 (Invoice #inc_abc_001).",
+          "timeDisplay": "23 Aug 2026, 06:12 pm"
+        }
+      ],
+      "createdAt": "2026-08-28T05:07:01.814Z",
+      "companyName": "ABC Industries",
+      "failureCode": "EXTENSION_GRANTED",
+      "maxAttempts": 3,
+      "aiPolicyNote": "Extension approved by Merchant Finance",
+      "attemptCount": 1,
+      "customerName": "ABC Industries Pvt Ltd",
+      "customerEmail": "finance@merchant.in",
+      "customerPhone": "+91 98765 43210",
+      "failureReason": "Payment extension: \"Formal 7-day Payment Extension - Invoice #inc_abc_001\"",
+      "paymentMethod": "Razorpay Dynamic Rail",
+      "policyAllowed": true,
+      "paymentLinkUrl": "https://rzp.io/rzp/RZ6Q8FE",
+      "recoveredAmount": 0,
+      "razorpayPaymentId": "plink_TTDOzPXoOy4LkL",
+      "recommendedAction": "Payment link",
+      "recoveryProbability": 70
+    },
+    {
+      "id": "RC-INV-1",
+      "risk": "High",
+      "aiWhy": "Payment of ₹90,000 has been captured & settled via Razorpay (ref: pay_TURZopxG0ypCT4). Revenue recovery complete.",
+      "issue": "Invoice overdue",
+      "amount": 90000,
+      "status": "Recovered",
+      "updated": "26 Aug 2026, 06:02 pm",
+      "timeline": [
+        {
+          "id": "t-inv-inv_TUOpdL2QQj3VgD",
+          "type": "detection",
+          "title": "Invoice #1 generated on Razorpay",
+          "timestamp": "2026-08-26T12:32:44.000Z",
+          "description": "Invoice generated for ₹90,000 (\"NOEON AB-M1\"). Customer SMS and Email issued. Short URL: https://rzp.io/rzp/QeUgNGM",
+          "timeDisplay": "26 Aug 2026, 06:02 pm"
+        },
+        {
+          "id": "t-fail-inv_TUOpdL2QQj3VgD",
+          "type": "failure",
+          "title": "Invoice payment overdue / Settlement pending",
+          "timestamp": "2026-08-26T12:42:44.000Z",
+          "description": "Invoice reached unpaid threshold (NOEON AB-M1). Initial checkout window elapsed without capture.",
+          "timeDisplay": "26 Aug 2026, 06:12 pm"
+        },
+        {
+          "id": "t-diag-inv_TUOpdL2QQj3VgD",
+          "type": "diagnosis",
+          "title": "AI strategy evaluated & action assigned",
+          "timestamp": "2026-08-26T12:44:44.000Z",
+          "description": "Analyzed customer payment reliability (Dinesh, 7032983348). Estimated 82% recovery probability. Selected multi-rail Razorpay payment link.",
+          "timeDisplay": "26 Aug 2026, 06:14 pm"
+        },
+        {
+          "id": "t-pl-plink_TUQ0lNzOJtNx0Y",
+          "type": "action",
+          "title": "Payment link generated on Razorpay",
+          "timestamp": "2026-08-26T13:41:58.000Z",
+          "actionType": "Payment link",
+          "description": "Razorpay payment link (plink_TUQ0lNzOJtNx0Y) active: https://rzp.io/rzp/sCO8dFF4 (Revenue Recovery: Settlement for Case RC-INV-1) for ₹90,000.",
+          "timeDisplay": "26 Aug 2026, 07:11 pm"
+        },
+        {
+          "id": "t-pl-plink_TUQCwsKcUlZumu",
+          "type": "action",
+          "title": "Payment link generated on Razorpay",
+          "timestamp": "2026-08-26T13:53:30.000Z",
+          "actionType": "Payment link",
+          "description": "Razorpay payment link (plink_TUQCwsKcUlZumu) active: https://rzp.io/rzp/Jw5Wsn2 (Revenue Recovery: Settlement for Case RC-INV-1) for ₹90,000.",
+          "timeDisplay": "26 Aug 2026, 07:23 pm"
+        },
+        {
+          "id": "t-pl-plink_TUQK7ViAAoqzTd",
+          "type": "success",
+          "title": "Payment link settled & recovered",
+          "timestamp": "2026-08-26T14:00:18.000Z",
+          "actionType": "Payment link",
+          "description": "Razorpay payment link (plink_TUQK7ViAAoqzTd) active: https://rzp.io/rzp/bVJliYU (Revenue Recovery: Settlement for Case RC-INV-1) for ₹90,000.",
+          "timeDisplay": "26 Aug 2026, 07:30 pm"
+        },
+        {
+          "id": "t-pay-pay_TURZopxG0ypCT4",
+          "type": "success",
+          "title": "Payment captured: ₹90,000",
+          "timestamp": "2026-08-26T15:13:52.000Z",
+          "description": "Razorpay confirmed capture of ₹90,000 via card (ref: pay_TURZopxG0ypCT4). Revenue recovered.",
+          "timeDisplay": "26 Aug 2026, 08:43 pm"
+        }
+      ],
+      "createdAt": "2026-08-26T12:32:44.000Z",
+      "companyName": "NOEON Technologies",
+      "failureCode": "INVOICE_UNPAID",
+      "maxAttempts": 3,
+      "recoveredAt": "26 Aug 2026, 08:43 pm",
+      "aiPolicyNote": "Revenue recovered. No action required.",
+      "attemptCount": 1,
+      "customerName": "Dinesh",
+      "customerEmail": "dineshpolavarapu66@gmail.com",
+      "customerPhone": "7032983348",
+      "failureReason": "Invoice #1 unpaid (NOEON AB-M1)",
+      "invoiceNumber": "inv_TUOpdL2QQj3VgD",
+      "paymentMethod": "Razorpay Invoice Portal",
+      "policyAllowed": true,
+      "paymentLinkUrl": "https://rzp.io/rzp/sCO8dFF4",
+      "recoveredAmount": 90000,
+      "razorpayPaymentId": "plink_TUQ0lNzOJtNx0Y",
+      "recommendedAction": "None (Recovered)",
+      "recoveryProbability": 100
+    },
+    {
+      "id": "RC-PL-SCyoOB",
+      "risk": "Low",
+      "aiWhy": "Razorpay Payment Link active. Dispatched multi-rail checkout link.",
+      "issue": "Payment link active",
+      "amount": 9529,
+      "status": "Awaiting payment",
+      "updated": "Today",
+      "timeline": [
+        {
+          "id": "t-scyoob-1",
+          "type": "detection",
+          "title": "Initial Payment Link Generated",
+          "timestamp": "2026-08-26T05:07:01.814Z",
+          "actionType": "Payment link",
+          "description": "Created dedicated payment link for 1x Enterprise Compute Node (₹9,529): https://rzp.io/rzp/J6QuVT8",
+          "timeDisplay": "24 Aug 2026, 11:54 am"
+        },
+        {
+          "id": "t-pl-plink_TUsHNqkCKDWZpd",
+          "type": "action",
+          "title": "Payment link generated on Razorpay",
+          "timestamp": "2026-08-27T17:21:07.000Z",
+          "actionType": "Payment link",
+          "description": "Razorpay payment link (plink_TUsHNqkCKDWZpd) active: https://rzp.io/rzp/T3hcLrpN (Revenue Recovery: Settlement for Case RC-PL-SCyoOB) for ₹9,529.",
+          "timeDisplay": "27 Aug 2026, 10:51 pm"
+        }
+      ],
+      "createdAt": "2026-08-28T05:07:01.814Z",
+      "companyName": "Enterprise Cloud Node",
+      "failureCode": "PAYMENT_LINK_ACTIVE",
+      "maxAttempts": 3,
+      "aiPolicyNote": "Autonomous recovery link policy compliant",
+      "attemptCount": 1,
+      "customerName": "Valued Customer",
+      "customerEmail": "dineshpolavarapu66@gmail.com",
+      "customerPhone": "+91 7032983348",
+      "failureReason": "Awaiting link settlement: \"Agentic Commerce: 1x Enterprise Cloud Compute Node (Dedicated)\"",
+      "paymentMethod": "Razorpay Dynamic Rail",
+      "policyAllowed": true,
+      "paymentLinkUrl": "https://rzp.io/rzp/J6QuVT8",
+      "recoveredAmount": 0,
+      "razorpayPaymentId": "plink_TTVUcHF1SCyoOB",
+      "recommendedAction": "Payment link",
+      "recoveryProbability": 80
+    },
+    {
+      "id": "RC-PL-IJ2I8d",
+      "risk": "High",
+      "aiWhy": "High-value B2B settlement link active for ABC Industries.",
+      "issue": "Invoice overdue",
+      "amount": 420000,
+      "status": "Awaiting payment",
+      "updated": "Today",
+      "timeline": [
+        {
+          "id": "t-ij2i8d-1",
+          "type": "detection",
+          "title": "Initial Settlement Link Issued",
+          "timestamp": "2026-08-26T05:07:01.814Z",
+          "actionType": "Payment link",
+          "description": "Dispatched ₹4,20,000 settlement payment link for overdue commercial invoice: https://rzp.io/rzp/jTGXmhm",
+          "timeDisplay": "24 Aug 2026, 12:07 pm"
+        },
+        {
+          "id": "t-pl-plink_TUTNNkMH398wV6",
+          "type": "action",
+          "title": "Payment link generated on Razorpay",
+          "timestamp": "2026-08-26T16:59:28.000Z",
+          "actionType": "Payment link",
+          "description": "Razorpay payment link (plink_TUTNNkMH398wV6) active: https://rzp.io/rzp/TzLBaIB (Revenue Recovery: Settlement for Case RC-PL-IJ2I8d) for ₹4,20,000.",
+          "timeDisplay": "26 Aug 2026, 10:29 pm"
+        }
+      ],
+      "createdAt": "2026-08-28T05:07:01.814Z",
+      "companyName": "ABC Industries",
+      "failureCode": "SETTLEMENT_OVERDUE",
+      "maxAttempts": 3,
+      "aiPolicyNote": "High value commercial recovery bounds verified",
+      "attemptCount": 1,
+      "customerName": "ABC Industries Pvt Ltd",
+      "customerEmail": "finance@merchant.in",
+      "customerPhone": "+91 98765 43210",
+      "failureReason": "Overdue commercial settlement: \"Settlement: Customer ABC — ₹4.2L Overdue Invoice\"",
+      "paymentMethod": "Razorpay Dynamic Rail",
+      "policyAllowed": true,
+      "paymentLinkUrl": "https://rzp.io/rzp/jTGXmhm",
+      "recoveredAmount": 0,
+      "razorpayPaymentId": "plink_TTVhyxk7IJ2I8d",
+      "recommendedAction": "Payment link",
+      "recoveryProbability": 70
+    },
+    {
+      "id": "RC-INV-1",
+      "customerName": "Dinesh",
+      "customerEmail": "dineshpolavarapu66@gmail.com",
+      "customerPhone": "7032983348",
+      "companyName": "NOEON Technologies",
+      "issue": "Invoice overdue",
+      "amount": 90000,
+      "risk": "High",
+      "recommendedAction": "Payment link",
+      "status": "Needs review",
+      "updated": "26 Aug 2026, 06:02 pm",
+      "createdAt": "2026-08-26T12:32:44.000Z",
+      "failureReason": "Invoice #1 unpaid (NOEON AB-M1)",
+      "failureCode": "INVOICE_UNPAID",
+      "paymentMethod": "Razorpay Invoice Portal",
+      "razorpayPaymentId": "inv_TUOpdL2QQj3VgD",
+      "invoiceNumber": "inv_TUOpdL2QQj3VgD",
+      "attemptCount": 1,
+      "maxAttempts": 3,
+      "recoveryProbability": 82,
+      "aiWhy": "Active Razorpay invoice for ₹90,000 (\"NOEON AB-M1\"). Customer contact verified (7032983348). 1-click payment portal active.",
+      "aiPolicyNote": "Invoice recovery bounds verified. Autonomous payment link permitted.",
+      "policyAllowed": true,
+      "recoveredAmount": 0,
+      "paymentLinkUrl": "https://rzp.io/rzp/QeUgNGM",
+      "timeline": [
+        {
+          "id": "t-inv-inv_TUOpdL2QQj3VgD",
+          "timestamp": "2026-08-26T12:32:44.000Z",
+          "timeDisplay": "26 Aug 2026, 06:02 pm",
+          "title": "Invoice #1 generated on Razorpay",
+          "description": "Invoice generated for ₹90,000 (\"NOEON AB-M1\"). Customer SMS and Email issued. Short URL: https://rzp.io/rzp/QeUgNGM",
+          "type": "detection"
+        },
+        {
+          "id": "t-fail-inv_TUOpdL2QQj3VgD",
+          "timestamp": "2026-08-26T12:42:44.000Z",
+          "timeDisplay": "26 Aug 2026, 06:12 pm",
+          "title": "Invoice payment overdue / Settlement pending",
+          "description": "Invoice reached unpaid threshold (NOEON AB-M1). Initial checkout window elapsed without capture.",
+          "type": "failure"
+        },
+        {
+          "id": "t-diag-inv_TUOpdL2QQj3VgD",
+          "timestamp": "2026-08-26T12:44:44.000Z",
+          "timeDisplay": "26 Aug 2026, 06:14 pm",
+          "title": "AI strategy evaluated & action assigned",
+          "description": "Analyzed customer payment reliability (Dinesh, 7032983348). Estimated 82% recovery probability. Selected multi-rail Razorpay payment link.",
+          "type": "diagnosis"
+        }
+      ]
+    }
+  ],
+  "activities": [],
+  "payments": []
+}

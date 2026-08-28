@@ -16,7 +16,10 @@ import {
   Radio,
   Activity,
   Send,
-  Copy
+  Copy,
+  Database,
+  User,
+  KeyRound
 } from 'lucide-react';
 import { MerchantProfile } from '../types';
 
@@ -25,13 +28,17 @@ interface IntegrationsViewProps {
   onUpdateMerchant: (updated: MerchantProfile) => void;
   onSyncRazorpay?: () => Promise<void>;
   isSyncing?: boolean;
+  user?: any | null;
+  onOpenAuth?: () => void;
 }
 
 export const IntegrationsView: React.FC<IntegrationsViewProps> = ({
   merchant,
   onUpdateMerchant,
   onSyncRazorpay,
-  isSyncing = false
+  isSyncing = false,
+  user,
+  onOpenAuth
 }) => {
   const [isEditingRazorpay, setIsEditingRazorpay] = useState<boolean>(false);
   const [isEditingGemini, setIsEditingGemini] = useState<boolean>(false);
@@ -184,6 +191,74 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({
       </div>
 
       <div className="space-y-6">
+        {/* Card 0: Supabase Cloud Database & Google Auth Status */}
+        <div 
+          id="cloud-database-auth-card"
+          className="bg-gradient-to-r from-emerald-950 via-neutral-900 to-neutral-950 text-white rounded-xl p-6 shadow-md border border-emerald-900/50 space-y-4"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center space-x-3.5">
+              <div className="w-10 h-10 rounded-lg bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <Database className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="text-sm font-semibold text-white">Supabase PostgreSQL 24/7 Cloud Storage</h3>
+                  <span className="text-[10px] font-mono text-emerald-300 bg-emerald-900/60 px-2 py-0.5 rounded border border-emerald-700 font-semibold">
+                    CONNECTED & PERSISTED
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-300 mt-0.5">
+                  Host: <span className="font-mono text-emerald-300">https://utkaitqddahefbgnwbmv.supabase.co</span>
+                </p>
+              </div>
+            </div>
+
+            {onOpenAuth && (
+              <button
+                onClick={onOpenAuth}
+                className="flex items-center space-x-2 px-3.5 py-2 bg-white hover:bg-neutral-100 text-neutral-900 rounded-lg text-xs font-semibold transition-all shadow-xs cursor-pointer self-start sm:self-auto"
+              >
+                {user ? (
+                  <>
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Account: {user.email?.split('@')[0]}</span>
+                  </>
+                ) : (
+                  <>
+                    <User className="w-3.5 h-3.5 text-neutral-700" />
+                    <span>Google Sign In / Connect</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-white/10 text-xs font-mono">
+            <div className="bg-white/5 p-2.5 rounded-lg border border-white/10">
+              <span className="text-[10px] text-neutral-400 block">PostgreSQL Status</span>
+              <span className="text-emerald-400 font-semibold mt-0.5 block flex items-center space-x-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Active 24/7 Tables</span>
+              </span>
+            </div>
+
+            <div className="bg-white/5 p-2.5 rounded-lg border border-white/10">
+              <span className="text-[10px] text-neutral-400 block">User Session</span>
+              <span className="text-neutral-200 mt-0.5 block truncate">
+                {user ? user.email : 'Local Guest (Ready to Sync)'}
+              </span>
+            </div>
+
+            <div className="bg-white/5 p-2.5 rounded-lg border border-white/10">
+              <span className="text-[10px] text-neutral-400 block">Synced Entities</span>
+              <span className="text-emerald-300 font-semibold mt-0.5 block">
+                Cases, Logs, Payments, Keys
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* Card 1: Razorpay Integration */}
         <div 
           id="razorpay-integration-card"

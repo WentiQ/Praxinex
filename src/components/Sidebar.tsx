@@ -34,6 +34,8 @@ interface SidebarProps {
   merchant: MerchantProfile;
   onOpenSettings: () => void;
   onOpenPraxinexCopilot?: () => void;
+  user?: any | null;
+  onOpenAuth?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -42,7 +44,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeCaseCount,
   merchant,
   onOpenSettings,
-  onOpenPraxinexCopilot
+  onOpenPraxinexCopilot,
+  user,
+  onOpenAuth
 }) => {
   const navItems = [
     { id: 'overview' as NavigationTab, label: 'Overview', icon: LayoutDashboard },
@@ -152,23 +156,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
       </div>
 
-      {/* Bottom Merchant Account Info */}
+      {/* Bottom Merchant / User Account Info */}
       <div className="p-3 border-t border-[#EAEAEA]">
         <button
           id="merchant-profile-trigger"
-          onClick={onOpenSettings}
-          className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-[#F4F4F5] transition-colors text-left group"
+          onClick={onOpenAuth || onOpenSettings}
+          className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-[#F4F4F5] transition-colors text-left group cursor-pointer"
+          title={user ? `Signed in as ${user.email}` : "Click to Sign In / Manage Account"}
         >
           <div className="flex items-center space-x-2.5 min-w-0">
-            <div className="w-7 h-7 rounded-md bg-neutral-900 text-white flex items-center justify-center font-medium text-xs flex-shrink-0">
-              {merchant.name.charAt(0)}
-            </div>
+            {user?.user_metadata?.avatar_url ? (
+              <img 
+                src={user.user_metadata.avatar_url} 
+                alt="Avatar" 
+                className="w-7 h-7 rounded-md object-cover flex-shrink-0 border border-neutral-200"
+              />
+            ) : (
+              <div className="w-7 h-7 rounded-md bg-neutral-900 text-white flex items-center justify-center font-medium text-xs flex-shrink-0">
+                {(user?.email?.[0] || merchant.name.charAt(0)).toUpperCase()}
+              </div>
+            )}
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium text-[#171717] truncate">{merchant.name}</p>
+              <p className="text-xs font-medium text-[#171717] truncate">
+                {user ? (user.user_metadata?.full_name || user.email?.split('@')[0]) : merchant.name}
+              </p>
               <div className="flex items-center space-x-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                 <p className="text-[10px] text-[#737373] truncate font-mono">
-                  {merchant.isTestMode ? 'Razorpay Test' : 'Razorpay Live'}
+                  {user ? 'Cloud Synced' : (merchant.isTestMode ? 'Razorpay Test' : 'Razorpay Live')}
                 </p>
               </div>
             </div>

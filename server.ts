@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import { db } from './server/db.js';
 
 dotenv.config();
 
@@ -80,6 +81,23 @@ let liveCasesStore: any[] = [];
 let livePaymentsStore: any[] = [];
 let liveActivitiesStore: any[] = [];
 let liveCustomersStore: any[] = [];
+
+// Initialize stores from persistent database / local storage
+(async () => {
+  try {
+    const [c, p, a] = await Promise.all([
+      db.getCases(),
+      db.getPayments(),
+      db.getActivities()
+    ]);
+    if (c && c.length > 0) liveCasesStore = c;
+    if (p && p.length > 0) livePaymentsStore = p;
+    if (a && a.length > 0) liveActivitiesStore = a;
+    console.log(`📦 Database loaded: ${liveCasesStore.length} cases, ${liveActivitiesStore.length} activities, ${livePaymentsStore.length} payments.`);
+  } catch (err: any) {
+    console.warn('Initial DB load warning:', err.message);
+  }
+})();
 
 // Lazy-initialization of Gemini AI client
 function getGeminiClient(customApiKey?: string): GoogleGenAI | null {
@@ -186,8 +204,31 @@ app.get('/api/health', (req, res) => {
     environment: process.env.NODE_ENV || 'development',
     webhookListenerActive: true,
     webhookId: 'TTWXpg6OFXSym0',
+    dbStatus: db.getStatus(),
     timestamp: new Date().toISOString()
   });
+});
+
+// Database & Storage Status Endpoint
+app.get('/api/db/status', (_req, res) => {
+  res.json({
+    success: true,
+    status: db.getStatus()
+  });
+});
+
+// Merchant Profile Cloud Persistence Endpoints
+app.get('/api/merchant', async (_req, res) => {
+  const profile = await db.getMerchant();
+  res.json({ success: true, profile });
+});
+
+app.post('/api/merchant', async (req, res) => {
+  const profile = req.body;
+  if (profile) {
+    await db.saveMerchant(profile);
+  }
+  res.json({ success: true, profile });
 });
 
 // AI Diagnosis Endpoint
@@ -320,6 +361,7 @@ app.post('/api/razorpay/webhook', async (req, res) => {
       }
 
       liveCasesStore = [rawCase, ...liveCasesStore.filter(c => c.id !== newCaseId)];
+      await db.upsertCase(rawCase);
 
       // Add activity
       const activity = {
@@ -338,24 +380,24 @@ app.post('/api/razorpay/webhook', async (req, res) => {
         resultStatus: 'info'
       };
       liveActivitiesStore = [activity, ...liveActivitiesStore];
+      await db.addActivity(activity);
 
       // Add to payments ledger as failed
-      livePaymentsStore = [
-        {
-          id: `p-${Date.now()}`,
-          razorpayPaymentId: payment.id || `pay_${Date.now()}`,
-          customerName,
-          customerEmail,
-          amount: amountInRupees,
-          status: 'failed',
-          failureReason,
-          method,
-          timestamp: `Today, ${timeDisplay}`,
-          recoveredByAgent: false,
-          caseId: newCaseId
-        },
-        ...livePaymentsStore
-      ];
+      const failedPayment = {
+        id: `p-${Date.now()}`,
+        razorpayPaymentId: payment.id || `pay_${Date.now()}`,
+        customerName,
+        customerEmail,
+        amount: amountInRupees,
+        status: 'failed',
+        failureReason,
+        method,
+        timestamp: `Today, ${timeDisplay}`,
+        recoveredByAgent: false,
+        caseId: newCaseId
+      };
+      livePaymentsStore = [failedPayment, ...livePaymentsStore];
+      await db.addPayment(failedPayment);
 
     } else if (eventName === 'payment.captured' || eventName === 'invoice.paid' || eventName === 'payment_link.paid' || eventName === 'order.paid') {
       // Mark matching case as recovered
@@ -368,13 +410,15 @@ app.post('/api/razorpay/webhook', async (req, res) => {
       liveCasesStore = liveCasesStore.map(c => {
         if (c.razorpayPaymentId === targetPaymentId || c.id === targetPaymentId || (c.invoiceNumber && c.invoiceNumber === targetInvoiceId)) {
           foundCase = true;
-          return {
+          const updated = {
             ...c,
             status: 'Recovered',
             recoveredAmount: c.amount,
             recoveredAt: timeDisplay,
             updated: 'Just now'
           };
+          db.upsertCase(updated).catch(() => {});
+          return updated;
         }
         return c;
       });
@@ -397,23 +441,23 @@ app.post('/api/razorpay/webhook', async (req, res) => {
         details: `Verified by Razorpay Webhook TTWXpg6OFXSym0`
       };
       liveActivitiesStore = [successActivity, ...liveActivitiesStore];
+      await db.addActivity(successActivity);
 
       // Add successful payment record
-      livePaymentsStore = [
-        {
-          id: `p-${Date.now()}`,
-          razorpayPaymentId: targetPaymentId || `pay_${Date.now()}`,
-          customerName,
-          customerEmail,
-          amount: amountInRupees,
-          status: 'succeeded',
-          method: paymentEntity.method || 'Razorpay Gateway',
-          timestamp: `Today, ${timeDisplay}`,
-          recoveredByAgent: true,
-          caseId: entityId
-        },
-        ...livePaymentsStore
-      ];
+      const successPayment = {
+        id: `p-${Date.now()}`,
+        razorpayPaymentId: targetPaymentId || `pay_${Date.now()}`,
+        customerName,
+        customerEmail,
+        amount: amountInRupees,
+        status: 'succeeded',
+        method: paymentEntity.method || 'Razorpay Gateway',
+        timestamp: `Today, ${timeDisplay}`,
+        recoveredByAgent: true,
+        caseId: entityId
+      };
+      livePaymentsStore = [successPayment, ...livePaymentsStore];
+      await db.addPayment(successPayment);
     }
 
     webhookLogs.unshift(logEntry);
@@ -1075,6 +1119,9 @@ app.get('/api/razorpay/sync', async (req, res) => {
       return timeB - timeA;
     });
 
+    // Persist synchronized cases to database
+    db.saveCases(allRealCases).catch(() => {});
+
     res.json({
       success: true,
       syncedAt: new Date().toISOString(),
@@ -1249,6 +1296,16 @@ app.post('/api/razorpay/action', async (req, res) => {
     } else if (actionType === 'Escalate') {
       resultStatus = 'escalated';
       resultMessage = `Case escalated to finance queue. Stopping rule strictly applied.`;
+    }
+
+    if (caseId) {
+      const targetCase = liveCasesStore.find((c: any) => c.id === caseId);
+      if (targetCase) {
+        db.upsertCase(targetCase).catch(() => {});
+      }
+    }
+    if (liveActivitiesStore.length > 0) {
+      db.addActivity(liveActivitiesStore[0]).catch(() => {});
     }
 
     res.json({
@@ -1677,6 +1734,17 @@ INSTRUCTIONS:
           reply = rawText;
           geminiSuccess = true;
           thoughts.push(`Synthesized with ${geminiResult.model}`);
+
+          if (hasMutations) {
+            if (Array.isArray(caseCards)) {
+              for (const c of caseCards) {
+                db.upsertCase(c).catch(() => {});
+              }
+            }
+            if (liveActivitiesStore.length > 0) {
+              db.addActivity(liveActivitiesStore[0]).catch(() => {});
+            }
+          }
 
           res.json({
             success: true,

@@ -6,7 +6,8 @@ import {
   RefreshCw, 
   ShieldCheck, 
   Sparkles,
-  ArrowUpRight
+  ArrowUpRight,
+  User
 } from 'lucide-react';
 import { MerchantProfile } from '../types';
 
@@ -20,6 +21,8 @@ interface HeaderProps {
   dateRange: string;
   setDateRange: (range: string) => void;
   onOpenPraxinex?: () => void;
+  user?: any | null;
+  onOpenAuth?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -31,7 +34,9 @@ export const Header: React.FC<HeaderProps> = ({
   merchant,
   dateRange,
   setDateRange,
-  onOpenPraxinex
+  onOpenPraxinex,
+  user,
+  onOpenAuth
 }) => {
   return (
     <header 
@@ -118,6 +123,33 @@ export const Header: React.FC<HeaderProps> = ({
             </>
           )}
         </button>
+
+        {/* User Account / Google Sign-in Button */}
+        {onOpenAuth && (
+          <button
+            id="auth-header-button"
+            onClick={onOpenAuth}
+            className="flex items-center space-x-1.5 px-2.5 py-1.5 bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 rounded-md text-xs font-medium text-neutral-800 transition-colors cursor-pointer"
+            title={user ? `Signed in as ${user.email}` : "Sign in / Connect Google Account"}
+          >
+            {user?.user_metadata?.avatar_url ? (
+              <img 
+                src={user.user_metadata.avatar_url} 
+                alt="Avatar" 
+                className="w-4 h-4 rounded-full"
+              />
+            ) : user ? (
+              <div className="w-4 h-4 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center font-bold">
+                {user.email?.[0]?.toUpperCase()}
+              </div>
+            ) : (
+              <User className="w-3.5 h-3.5 text-neutral-600" />
+            )}
+            <span className="max-w-[100px] truncate hidden sm:inline text-[11px]">
+              {user ? (user.user_metadata?.full_name || user.email?.split('@')[0]) : 'Sign In'}
+            </span>
+          </button>
+        )}
       </div>
     </header>
   );

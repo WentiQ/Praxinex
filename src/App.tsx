@@ -16,6 +16,8 @@ import { CaseDetailModal } from './components/CaseDetailModal';
 import { ActionExecutionModal } from './components/ActionExecutionModal';
 import { SimulateFailureModal } from './components/SimulateFailureModal';
 import { ScanProgressModal } from './components/ScanProgressModal';
+import { AuthModal } from './components/AuthModal';
+import { supabase } from './lib/supabaseClient';
 import { Sparkles } from 'lucide-react';
 import { 
   INITIAL_CASES, 
@@ -32,6 +34,23 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<NavigationTab>('overview');
   const [dateRange, setDateRange] = useState<string>('today');
 
+  // Supabase Authentication State
+  const [user, setUser] = useState<any | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    // Check initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user || null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   // Core Data
   const [cases, setCases] = useState<RecoveryCase[]>(INITIAL_CASES);
   const [activities, setActivities] = useState<ActivityEvent[]>(INITIAL_ACTIVITIES);
@@ -47,8 +66,24 @@ export default function App() {
     setMerchant(updated);
     try {
       localStorage.setItem('recovery_merchant_profile', JSON.stringify(updated));
+      fetch('/api/merchant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      }).catch(() => {});
     } catch {}
   };
+
+  useEffect(() => {
+    fetch('/api/merchant')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.success && data.profile) {
+          setMerchant(prev => ({ ...prev, ...data.profile }));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const [policies, setPolicies] = useState<RecoveryPolicy>(INITIAL_POLICIES);
   const [payments, setPayments] = useState<PaymentRecord[]>(PAYMENT_LEDGER);
@@ -188,11 +223,14 @@ export default function App() {
           });
         }
 
-        setMerchant(prev => ({
-          ...prev,
-          lastSyncedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          razorpayConnected: true
-        }));
+        setMerchant(prev => {
+          if (prev.razorpayConnected && prev.lastSyncedAt) return prev;
+          return {
+            ...prev,
+            lastSyncedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            razorpayConnected: true
+          };
+        });
       }
     } catch (err) {
       console.error('Failed to sync live Razorpay data:', err);
@@ -201,14 +239,14 @@ export default function App() {
     }
   }, [merchant.razorpayKeyId, merchant.razorpayKeySecret]);
 
-  // Initial Sync & Periodic Webhook Polling
+  // Initial Sync & Periodic Webhook Polling (Stable 15s heartbeat)
   useEffect(() => {
     syncLiveRazorpayData(false);
     const interval = setInterval(() => {
       syncLiveRazorpayData(true);
-    }, 7000);
+    }, 15000);
     return () => clearInterval(interval);
-  }, [syncLiveRazorpayData]);
+  }, []);
 
   // Computed Financial Metrics
   const totalAtRisk = cases.reduce((sum, c) => sum + (c.status !== 'Recovered' ? c.amount : 0), 0);
@@ -372,6 +410,8 @@ export default function App() {
         merchant={merchant}
         onOpenSettings={() => setCurrentTab('settings')}
         onOpenPraxinexCopilot={() => setIsPraxinexChatOpen(true)}
+        user={user}
+        onOpenAuth={() => setIsAuthModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -387,6 +427,8 @@ export default function App() {
           dateRange={dateRange}
           setDateRange={setDateRange}
           onOpenPraxinex={() => setIsPraxinexChatOpen(true)}
+          user={user}
+          onOpenAuth={() => setIsAuthModalOpen(true)}
         />
 
         {/* View Switcher */}
@@ -477,6 +519,8 @@ export default function App() {
               onUpdateMerchant={handleUpdateMerchant}
               onSyncRazorpay={syncLiveRazorpayData}
               isSyncing={isSyncing}
+              user={user}
+              onOpenAuth={() => setIsAuthModalOpen(true)}
             />
           )}
 
@@ -484,6 +528,8 @@ export default function App() {
             <SettingsView
               merchant={merchant}
               onUpdateMerchant={handleUpdateMerchant}
+              user={user}
+              onOpenAuth={() => setIsAuthModalOpen(true)}
             />
           )}
         </main>
@@ -556,6 +602,18 @@ export default function App() {
         onClose={() => setIsScanOpen(false)}
         cases={cases}
         onScanComplete={handleScanComplete}
+      />
+
+      {/* Supabase & Google Authentication Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        user={user}
+        onAuthChange={() => {
+          supabase.auth.getSession().then(({ data: { session } }) => {
+            setUser(session?.user || null);
+          });
+        }}
       />
     </div>
   );
