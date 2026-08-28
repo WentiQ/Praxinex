@@ -39,7 +39,7 @@ class DatabaseManager {
       process.env.SUPABASE_URL ||
       process.env.NEXT_PUBLIC_SUPABASE_URL ||
       process.env.VITE_SUPABASE_URL ||
-      ''
+      'https://utkaitqddahefbgnwbmv.supabase.co'
     ).trim();
     const supabaseKey = (
       process.env.SUPABASE_KEY ||
@@ -47,7 +47,7 @@ class DatabaseManager {
       process.env.SUPABASE_SERVICE_ROLE_KEY ||
       process.env.SUPABASE_ANON_KEY ||
       process.env.VITE_SUPABASE_ANON_KEY ||
-      ''
+      'sb_publishable_kYYhHqmkD5omxM8M2_Nreg_qAyV_lZU'
     ).trim();
 
     // Clean URL if trailing /rest/v1 or slashes were included
