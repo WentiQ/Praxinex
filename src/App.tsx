@@ -114,6 +114,26 @@ export default function App() {
         }
       })
       .catch(() => {});
+
+    // Load cloud cases from database
+    fetch('/api/cases')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.success && Array.isArray(data.cases) && data.cases.length > 0) {
+          setCases(data.cases);
+        }
+      })
+      .catch(() => {});
+
+    // Load cloud activities from database
+    fetch('/api/activities')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.success && Array.isArray(data.activities) && data.activities.length > 0) {
+          setActivities(data.activities);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const [payments, setPayments] = useState<PaymentRecord[]>(PAYMENT_LEDGER);
