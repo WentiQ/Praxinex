@@ -1034,22 +1034,17 @@ app.get('/api/razorpay/sync', async (req, res) => {
       const descCaseMatch = plinkDesc.match(/(RC-[a-zA-Z0-9_-]+)/i);
       const descCaseId = descCaseMatch ? descCaseMatch[1] : '';
 
-      // Find matching case across ALL candidate cases with robust normalization
+      // Find matching case across ALL candidate cases
       const matchingCase = allCandidateCases.find((c: any) => {
-        const cleanCaseId = (c.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-        const cleanLinkedId = (linkedCaseId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-        const cleanDescId = (descCaseId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-        const cleanPlinkRef = (plink.reference_id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-
-        if (cleanLinkedId && (cleanCaseId === cleanLinkedId || cleanLinkedId.includes(cleanCaseId) || cleanCaseId.includes(cleanLinkedId))) return true;
-        if (cleanDescId && (cleanCaseId === cleanDescId || cleanDescId.includes(cleanCaseId) || cleanCaseId.includes(cleanDescId))) return true;
-        if (cleanPlinkRef && (cleanPlinkRef.includes(cleanCaseId) || cleanCaseId.includes(cleanPlinkRef))) return true;
-        if (plink.notes?.caseId && (c.id === plink.notes.caseId || cleanCaseId.includes(plink.notes.caseId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()))) return true;
-        if (c.paymentLinkUrl && plink.short_url && (c.paymentLinkUrl === plink.short_url || c.paymentLinkUrl.endsWith(plink.short_url.split('/').pop() || ''))) return true;
+        if (linkedCaseId && (c.id === linkedCaseId || c.invoiceNumber === linkedCaseId || linkedCaseId.includes(c.id))) return true;
+        if (descCaseId && (c.id === descCaseId || c.invoiceNumber === descCaseId)) return true;
+        if (plink.notes?.caseId && (c.id === plink.notes.caseId || c.invoiceNumber === plink.notes.caseId)) return true;
+        if (plinkDesc && (plinkDesc.includes(c.id) || (c.invoiceNumber && plinkDesc.includes(c.invoiceNumber)))) return true;
+        if (c.paymentLinkUrl && plink.short_url && c.paymentLinkUrl === plink.short_url) return true;
         if (c.razorpayPaymentId && (c.razorpayPaymentId === plink.id || c.razorpayPaymentId === plink.short_url)) return true;
-        if (c.id && plink.id && c.id.includes(plink.id.slice(-6))) return true;
+        if (c.id.includes(plink.id.slice(-6))) return true;
         if (plinkEmail && c.customerEmail && c.customerEmail.toLowerCase() === plinkEmail) {
-          if (Math.abs(c.amount - plinkAmount) < 1) {
+          if (Math.abs(c.amount - plinkAmount) < 1 && (plinkDesc.toLowerCase().includes('settlement') || plinkDesc.toLowerCase().includes('recovery') || plinkDesc.includes(c.id))) {
             return true;
           }
         }
@@ -1107,18 +1102,18 @@ app.get('/api/razorpay/sync', async (req, res) => {
         return;
       }
 
-      // Do not create standalone duplicate if any candidate case already covers this email & amount or link URL
-      const duplicateExists = allCandidateCases.some((c: any) => 
-        (c.customerEmail && plinkEmail && c.customerEmail.toLowerCase() === plinkEmail && Math.abs(c.amount - plinkAmount) < 1) ||
-        (c.paymentLinkUrl && plink.short_url && c.paymentLinkUrl === plink.short_url) ||
-        (c.razorpayPaymentId && c.razorpayPaymentId === plink.id)
-      );
-      if (duplicateExists) {
-        return;
-      }
+      // Standalone payment link case if not matched
+      const isActionLink = 
+        plinkDesc.toLowerCase().includes('settlement') || 
+        plinkDesc.toLowerCase().includes('recovery') || 
+        plinkDesc.toLowerCase().includes('case') || 
+        plink.notes?.origin === 'RECOVERY_AGENT' || 
+        plink.notes?.origin === 'AI_REVENUE_RECOVERY_AGENT' ||
+        plink.notes?.origin === 'AI_REVENUE_RECOVERY' ||
+        plink.notes?.origin === 'PRAXINEX_GEMINI_AI' ||
+        Boolean(plink.notes?.caseId) ||
+        (plink.reference_id && (plink.reference_id.startsWith('ref_') || plink.reference_id.startsWith('pl_')));
 
-      // Standalone payment link case if truly unrepresented
-      const isActionLink = plinkDesc.toLowerCase().includes('settlement for case') || plink.notes?.origin === 'RECOVERY_AGENT' || plink.notes?.origin === 'PRAXINEX_GEMINI_AI';
       if (isActionLink) {
         return; // skip stray action duplicates
       }
@@ -1248,26 +1243,31 @@ app.get('/api/razorpay/sync', async (req, res) => {
       })
     ];
 
-    // Deduplicate allRealCases strictly by case ID, payment link URL, and payment ID
+    // Deduplicate allRealCases strictly by case ID, payment link ID, invoice number, and link URL
     const cleanCasesMap = new Map<string, any>();
-    const seenUrls = new Map<string, string>();
-    const seenPaymentIds = new Map<string, string>();
+    const linkIdToCaseIdMap = new Map<string, string>();
+    const invoiceToCaseIdMap = new Map<string, string>();
+    const urlToCaseIdMap = new Map<string, string>();
 
     for (const c of allRealCases) {
       if (!c || !c.id) continue;
 
+      // Find existing canonical case ID if matched by razorpayPaymentId, invoiceNumber, or URL
       let canonicalId = c.id;
-      if (c.paymentLinkUrl && seenUrls.has(c.paymentLinkUrl)) {
-        canonicalId = seenUrls.get(c.paymentLinkUrl)!;
-      } else if (c.razorpayPaymentId && seenPaymentIds.has(c.razorpayPaymentId)) {
-        canonicalId = seenPaymentIds.get(c.razorpayPaymentId)!;
+      if (c.razorpayPaymentId && linkIdToCaseIdMap.has(c.razorpayPaymentId)) {
+        canonicalId = linkIdToCaseIdMap.get(c.razorpayPaymentId)!;
+      } else if (c.invoiceNumber && invoiceToCaseIdMap.has(c.invoiceNumber)) {
+        canonicalId = invoiceToCaseIdMap.get(c.invoiceNumber)!;
+      } else if (c.paymentLinkUrl && urlToCaseIdMap.has(c.paymentLinkUrl)) {
+        canonicalId = urlToCaseIdMap.get(c.paymentLinkUrl)!;
       }
 
       const existing = cleanCasesMap.get(canonicalId);
       if (!existing) {
         cleanCasesMap.set(canonicalId, { ...c, id: canonicalId, timeline: [...(c.timeline || [])] });
-        if (c.paymentLinkUrl) seenUrls.set(c.paymentLinkUrl, canonicalId);
-        if (c.razorpayPaymentId) seenPaymentIds.set(c.razorpayPaymentId, canonicalId);
+        if (c.razorpayPaymentId) linkIdToCaseIdMap.set(c.razorpayPaymentId, canonicalId);
+        if (c.invoiceNumber) invoiceToCaseIdMap.set(c.invoiceNumber, canonicalId);
+        if (c.paymentLinkUrl) urlToCaseIdMap.set(c.paymentLinkUrl, canonicalId);
       } else {
         const isRecovered = existing.status === 'Recovered' || c.status === 'Recovered';
         cleanCasesMap.set(canonicalId, {
@@ -1277,9 +1277,15 @@ app.get('/api/razorpay/sync', async (req, res) => {
           status: isRecovered ? 'Recovered' : (c.status || existing.status),
           recommendedAction: isRecovered ? 'None (Recovered)' : (c.recommendedAction || existing.recommendedAction),
           recoveredAmount: isRecovered ? (c.recoveredAmount || existing.recoveredAmount || c.amount || existing.amount) : 0,
+          recoveredAt: isRecovered ? (c.recoveredAt || existing.recoveredAt || 'Captured') : undefined,
           paymentLinkUrl: c.paymentLinkUrl || existing.paymentLinkUrl,
+          razorpayPaymentId: c.razorpayPaymentId || existing.razorpayPaymentId,
+          invoiceNumber: c.invoiceNumber || existing.invoiceNumber,
           timeline: [...(existing.timeline || []), ...(c.timeline || []).filter((t: any) => !(existing.timeline || []).some((et: any) => et.id === t.id))]
         });
+        if (c.razorpayPaymentId) linkIdToCaseIdMap.set(c.razorpayPaymentId, canonicalId);
+        if (c.invoiceNumber) invoiceToCaseIdMap.set(c.invoiceNumber, canonicalId);
+        if (c.paymentLinkUrl) urlToCaseIdMap.set(c.paymentLinkUrl, canonicalId);
       }
     }
 

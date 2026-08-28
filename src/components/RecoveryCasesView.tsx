@@ -46,7 +46,7 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
     return 0;
   };
 
-  const filteredCases = cases
+  const rawFiltered = cases
     .filter((c) => {
       const matchesSearch = 
         c.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -71,6 +71,19 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
       return matchesSearch && matchesRisk && matchesIssue && matchesStatus;
     })
     .sort((a, b) => getCaseLastUpdatedTime(b) - getCaseLastUpdatedTime(a));
+
+  // Ensure strict uniqueness in displayed list
+  const seenIds = new Set<string>();
+  const seenPaymentIds = new Set<string>();
+  const filteredCases = rawFiltered.filter(c => {
+    if (!c || !c.id) return false;
+    if (seenIds.has(c.id)) return false;
+    if (c.razorpayPaymentId && seenPaymentIds.has(c.razorpayPaymentId)) return false;
+    
+    seenIds.add(c.id);
+    if (c.razorpayPaymentId) seenPaymentIds.add(c.razorpayPaymentId);
+    return true;
+  });
 
   const totalFilteredRisk = filteredCases.reduce((sum, c) => sum + (c.status !== 'Recovered' ? c.amount : 0), 0);
   const totalFilteredRecovered = filteredCases.reduce((sum, c) => sum + (c.status === 'Recovered' ? (c.recoveredAmount || c.amount) : 0), 0);

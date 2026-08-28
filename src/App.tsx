@@ -265,24 +265,20 @@ export default function App() {
         if (realCases && realCases.length > 0) {
           setCases(prev => {
             const casesMap = new Map<string, any>();
-            const urlToId = new Map<string, string>();
-            const paymentIdToId = new Map<string, string>();
+            const linkIdMap = new Map<string, string>();
+            const invoiceMap = new Map<string, string>();
+            const urlMap = new Map<string, string>();
 
-            for (const p of prev) {
-              if (p && p.id) {
-                casesMap.set(p.id, p);
-                if (p.paymentLinkUrl) urlToId.set(p.paymentLinkUrl, p.id);
-                if (p.razorpayPaymentId) paymentIdToId.set(p.razorpayPaymentId, p.id);
-              }
-            }
+            const addOrMerge = (c: any) => {
+              if (!c || !c.id) return;
+              let targetId = c.id;
 
-            for (const rc of realCases) {
-              if (!rc || !rc.id) continue;
-              let targetId = rc.id;
-              if (rc.paymentLinkUrl && urlToId.has(rc.paymentLinkUrl)) {
-                targetId = urlToId.get(rc.paymentLinkUrl)!;
-              } else if (rc.razorpayPaymentId && paymentIdToId.has(rc.razorpayPaymentId)) {
-                targetId = paymentIdToId.get(rc.razorpayPaymentId)!;
+              if (c.razorpayPaymentId && linkIdMap.has(c.razorpayPaymentId)) {
+                targetId = linkIdMap.get(c.razorpayPaymentId)!;
+              } else if (c.invoiceNumber && invoiceMap.has(c.invoiceNumber)) {
+                targetId = invoiceMap.get(c.invoiceNumber)!;
+              } else if (c.paymentLinkUrl && urlMap.has(c.paymentLinkUrl)) {
+                targetId = urlMap.get(c.paymentLinkUrl)!;
               }
 
               const existing = casesMap.get(targetId);
@@ -290,25 +286,33 @@ export default function App() {
                 const existingTimelineIds = new Set((existing.timeline || []).map((t: any) => t.id));
                 const mergedTimeline = [
                   ...(existing.timeline || []),
-                  ...(rc.timeline || []).filter((t: any) => !existingTimelineIds.has(t.id))
+                  ...(c.timeline || []).filter((t: any) => !existingTimelineIds.has(t.id))
                 ];
-                const isRecovered = rc.status === 'Recovered' || existing.status === 'Recovered';
+                const isRecovered = c.status === 'Recovered' || existing.status === 'Recovered';
                 casesMap.set(targetId, {
                   ...existing,
-                  ...rc,
+                  ...c,
                   id: targetId,
-                  status: isRecovered ? 'Recovered' : rc.status,
-                  recommendedAction: isRecovered ? 'None (Recovered)' : rc.recommendedAction,
-                  recoveredAmount: isRecovered ? (rc.recoveredAmount || rc.amount || existing.recoveredAmount) : 0,
-                  recoveredAt: isRecovered ? (rc.recoveredAt || existing.recoveredAt || 'Captured') : undefined,
+                  status: isRecovered ? 'Recovered' : c.status,
+                  recommendedAction: isRecovered ? 'None (Recovered)' : c.recommendedAction,
+                  recoveredAmount: isRecovered ? (c.recoveredAmount || c.amount || existing.recoveredAmount) : 0,
+                  recoveredAt: isRecovered ? (c.recoveredAt || existing.recoveredAt || 'Captured') : undefined,
+                  paymentLinkUrl: c.paymentLinkUrl || existing.paymentLinkUrl,
+                  razorpayPaymentId: c.razorpayPaymentId || existing.razorpayPaymentId,
+                  invoiceNumber: c.invoiceNumber || existing.invoiceNumber,
                   timeline: mergedTimeline
                 });
               } else {
-                casesMap.set(targetId, rc);
-                if (rc.paymentLinkUrl) urlToId.set(rc.paymentLinkUrl, targetId);
-                if (rc.razorpayPaymentId) paymentIdToId.set(rc.razorpayPaymentId, targetId);
+                casesMap.set(targetId, { ...c, id: targetId });
+                if (c.razorpayPaymentId) linkIdMap.set(c.razorpayPaymentId, targetId);
+                if (c.invoiceNumber) invoiceMap.set(c.invoiceNumber, targetId);
+                if (c.paymentLinkUrl) urlMap.set(c.paymentLinkUrl, targetId);
               }
-            }
+            };
+
+            for (const p of prev) addOrMerge(p);
+            for (const rc of realCases) addOrMerge(rc);
+
             return Array.from(casesMap.values());
           });
 
