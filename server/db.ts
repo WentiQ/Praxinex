@@ -106,6 +106,7 @@ class DatabaseManager {
         const { data, error } = await this.supabase
           .from('merchant_settings')
           .select('*')
+          .neq('id', 'recovery_policies')
           .order('updated_at', { ascending: false })
           .limit(1)
           .single();
@@ -113,6 +114,22 @@ class DatabaseManager {
       } catch {}
     }
     return this.localCache.merchant;
+  }
+
+  async getAllMerchants(): Promise<any[]> {
+    if (this.isSupabaseActive && this.supabase) {
+      try {
+        const { data, error } = await this.supabase
+          .from('merchant_settings')
+          .select('*')
+          .neq('id', 'recovery_policies')
+          .order('updated_at', { ascending: false });
+        if (data && !error && data.length > 0) {
+          return data.map(d => d.profile).filter(p => p && (p.razorpayKeyId || p.businessName));
+        }
+      } catch {}
+    }
+    return this.localCache.merchant ? [this.localCache.merchant] : [];
   }
 
   async saveMerchant(profile: any): Promise<void> {

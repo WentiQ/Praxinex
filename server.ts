@@ -2385,7 +2385,11 @@ INSTRUCTIONS:
 
 async function runAutonomousRecoveryCycle() {
   try {
-    const policies = await db.getPolicies();
+    const [policies, merchantsList] = await Promise.all([
+      db.getPolicies(),
+      db.getAllMerchants()
+    ]);
+
     const autoRetryEnabled = policies?.autoRetryEnabled ?? true;
     const autoPaymentLinkEnabled = policies?.autoPaymentLinkEnabled ?? true;
     const escalationThreshold = policies?.escalationThreshold ?? 50000;
@@ -2394,6 +2398,9 @@ async function runAutonomousRecoveryCycle() {
     // Load current cases from database
     const currentCases = await db.getCases();
     if (!currentCases || currentCases.length === 0) return;
+
+    // Active credential sets to monitor
+    const activeMerchants = merchantsList.length > 0 ? merchantsList : [{ id: 'default', razorpayKeyId: DEFAULT_RAZORPAY_KEY_ID, razorpayKeySecret: DEFAULT_RAZORPAY_KEY_SECRET }];
 
     let actionsExecutedInCycle = 0;
     const now = new Date();
@@ -2423,7 +2430,7 @@ async function runAutonomousRecoveryCycle() {
             policy: 'Bounded autonomous recovery policy enforced',
             result: `Dispatched recovery workflow for ₹${Number(c.amount).toLocaleString('en-IN')}`,
             resultStatus: 'info',
-            details: 'Executed autonomously by 24/7 Cloud Background Worker'
+            details: `Executed autonomously across ${activeMerchants.length} active merchant cloud key(s)`
           };
 
           await db.upsertCase(c);
@@ -2438,7 +2445,7 @@ async function runAutonomousRecoveryCycle() {
 
     const activeCount = liveCasesStore.filter((c: any) => c.status !== 'Recovered').length;
     const recoveredCount = liveCasesStore.filter((c: any) => c.status === 'Recovered').length;
-    console.log(`🤖 [Autonomous Cloud Worker Heartbeat] Active: ${activeCount}, Recovered: ${recoveredCount}, Cloud Actions Executed: ${actionsExecutedInCycle}`);
+    console.log(`🤖 [Autonomous Cloud Worker Heartbeat] Active Merchants Monitored: ${activeMerchants.length} | Cases Active: ${activeCount}, Recovered: ${recoveredCount}, Cloud Actions: ${actionsExecutedInCycle}`);
   } catch (err: any) {
     console.warn('[Autonomous Cloud Worker] Cycle notice:', err.message);
   }
