@@ -265,12 +265,27 @@ export default function App() {
         if (realCases && realCases.length > 0) {
           setCases(prev => {
             const casesMap = new Map<string, any>();
+            const urlToId = new Map<string, string>();
+            const paymentIdToId = new Map<string, string>();
+
             for (const p of prev) {
-              if (p && p.id) casesMap.set(p.id, p);
+              if (p && p.id) {
+                casesMap.set(p.id, p);
+                if (p.paymentLinkUrl) urlToId.set(p.paymentLinkUrl, p.id);
+                if (p.razorpayPaymentId) paymentIdToId.set(p.razorpayPaymentId, p.id);
+              }
             }
+
             for (const rc of realCases) {
               if (!rc || !rc.id) continue;
-              const existing = casesMap.get(rc.id);
+              let targetId = rc.id;
+              if (rc.paymentLinkUrl && urlToId.has(rc.paymentLinkUrl)) {
+                targetId = urlToId.get(rc.paymentLinkUrl)!;
+              } else if (rc.razorpayPaymentId && paymentIdToId.has(rc.razorpayPaymentId)) {
+                targetId = paymentIdToId.get(rc.razorpayPaymentId)!;
+              }
+
+              const existing = casesMap.get(targetId);
               if (existing) {
                 const existingTimelineIds = new Set((existing.timeline || []).map((t: any) => t.id));
                 const mergedTimeline = [
@@ -278,9 +293,10 @@ export default function App() {
                   ...(rc.timeline || []).filter((t: any) => !existingTimelineIds.has(t.id))
                 ];
                 const isRecovered = rc.status === 'Recovered' || existing.status === 'Recovered';
-                casesMap.set(rc.id, {
+                casesMap.set(targetId, {
                   ...existing,
                   ...rc,
+                  id: targetId,
                   status: isRecovered ? 'Recovered' : rc.status,
                   recommendedAction: isRecovered ? 'None (Recovered)' : rc.recommendedAction,
                   recoveredAmount: isRecovered ? (rc.recoveredAmount || rc.amount || existing.recoveredAmount) : 0,
@@ -288,7 +304,9 @@ export default function App() {
                   timeline: mergedTimeline
                 });
               } else {
-                casesMap.set(rc.id, rc);
+                casesMap.set(targetId, rc);
+                if (rc.paymentLinkUrl) urlToId.set(rc.paymentLinkUrl, targetId);
+                if (rc.razorpayPaymentId) paymentIdToId.set(rc.razorpayPaymentId, targetId);
               }
             }
             return Array.from(casesMap.values());
