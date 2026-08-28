@@ -41,10 +41,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setLoading(true);
     setErrorMsg(null);
     try {
+      const redirectUrl = typeof window !== 'undefined' && window.location.origin 
+        ? `${window.location.origin.replace(/\/$/, '')}/` 
+        : 'https://praxinex.onrender.com/';
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin
+          redirectTo: redirectUrl
         }
       });
       if (error) throw error;

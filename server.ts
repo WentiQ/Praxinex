@@ -1558,12 +1558,12 @@ interface AutoTrafficEngineConfig {
 }
 
 let autoTrafficConfig: AutoTrafficEngineConfig = {
-  isRunning: false,
+  isRunning: true,
   maxDailyCases: 100,
   targetCasesToday: 80,
   generatedToday: 0,
   currentDay: new Date().toISOString().slice(0, 10),
-  pacingMode: 'fast_demo',
+  pacingMode: 'random_daily',
   lastGeneratedAt: '',
   nextScheduledAt: '',
   totalGeneratedAllTime: 0,
@@ -2379,6 +2379,88 @@ INSTRUCTIONS:
   }
 });
 
+// ==========================================
+// 9. 24/7 AUTONOMOUS CLOUD BACKGROUND WORKER
+// ==========================================
+
+async function runAutonomousRecoveryCycle() {
+  try {
+    const policies = await db.getPolicies();
+    const autoRetryEnabled = policies?.autoRetryEnabled ?? true;
+    const autoPaymentLinkEnabled = policies?.autoPaymentLinkEnabled ?? true;
+    const escalationThreshold = policies?.escalationThreshold ?? 50000;
+    const maxRetryAttempts = policies?.maxRetryAttempts ?? 3;
+
+    // Load current cases from database
+    const currentCases = await db.getCases();
+    if (!currentCases || currentCases.length === 0) return;
+
+    let actionsExecutedInCycle = 0;
+    const now = new Date();
+    const timeDisplay = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    for (const c of currentCases) {
+      if (!c) continue;
+
+      // Check if case is active and awaiting autonomous action
+      if (c.status === 'In progress' && c.amount <= escalationThreshold && (c.attemptCount || 1) < maxRetryAttempts) {
+        if (autoPaymentLinkEnabled || autoRetryEnabled) {
+          c.attemptCount = (c.attemptCount || 1) + 1;
+          c.status = 'Awaiting payment';
+          c.updated = 'Just now';
+
+          const activity = {
+            id: `act-cloud-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            timestamp: now.toISOString(),
+            timeDisplay,
+            dateDisplay: 'Today',
+            eventTitle: 'Autonomous Recovery Dispatched (Cloud Agent)',
+            caseId: c.id,
+            customerName: c.customerName,
+            amount: c.amount,
+            decision: c.recommendedAction || 'Payment link',
+            reason: c.aiWhy || 'Autonomous recovery strategy executed within policy bounds.',
+            policy: 'Bounded autonomous recovery policy enforced',
+            result: `Dispatched recovery workflow for ₹${Number(c.amount).toLocaleString('en-IN')}`,
+            resultStatus: 'info',
+            details: 'Executed autonomously by 24/7 Cloud Background Worker'
+          };
+
+          await db.upsertCase(c);
+          await db.addActivity(activity);
+
+          liveCasesStore = liveCasesStore.map(item => item.id === c.id ? c : item);
+          liveActivitiesStore = [activity, ...liveActivitiesStore];
+          actionsExecutedInCycle++;
+        }
+      }
+    }
+
+    const activeCount = liveCasesStore.filter((c: any) => c.status !== 'Recovered').length;
+    const recoveredCount = liveCasesStore.filter((c: any) => c.status === 'Recovered').length;
+    console.log(`🤖 [Autonomous Cloud Worker Heartbeat] Active: ${activeCount}, Recovered: ${recoveredCount}, Cloud Actions Executed: ${actionsExecutedInCycle}`);
+  } catch (err: any) {
+    console.warn('[Autonomous Cloud Worker] Cycle notice:', err.message);
+  }
+}
+
+function startCloudAutonomousWorker() {
+  console.log('🚀 [Autonomous Cloud Worker] Initializing 24/7 background agent...');
+  
+  // Start traffic scheduling immediately
+  scheduleNextTrafficEvent();
+
+  // Run initial autonomous cycle after 6 seconds
+  setTimeout(() => {
+    runAutonomousRecoveryCycle();
+  }, 6000);
+
+  // Recurring 60-second autonomous cloud cycle
+  setInterval(() => {
+    runAutonomousRecoveryCycle();
+  }, 60000);
+}
+
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -2397,6 +2479,7 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Recovery platform server running on http://0.0.0.0:${PORT}`);
     console.log(`Webhook endpoint ready: http://0.0.0.0:${PORT}/api/razorpay/webhook`);
+    startCloudAutonomousWorker();
   });
 }
 
