@@ -479,6 +479,49 @@ export default function App() {
     setSelectedCase(newCase);
   };
 
+  const handleOpenCaseById = useCallback(async (caseId: string) => {
+    if (!caseId) return;
+    const clean = caseId.trim();
+
+    // 1. Search locally in cases state
+    let target = cases.find(c => 
+      c.id === clean || 
+      c.id.toLowerCase() === clean.toLowerCase() ||
+      c.invoiceNumber === clean ||
+      c.razorpayPaymentId === clean ||
+      clean.includes(c.id) ||
+      c.id.includes(clean)
+    );
+
+    if (target) {
+      setSelectedCase(target);
+      return;
+    }
+
+    // 2. Fetch latest fresh cases from server
+    try {
+      const res = await fetch('/api/cases');
+      const data = await res.json();
+      if (data?.cases && Array.isArray(data.cases)) {
+        setCases(data.cases);
+        target = data.cases.find((c: any) => 
+          c.id === clean || 
+          c.id.toLowerCase() === clean.toLowerCase() ||
+          c.invoiceNumber === clean ||
+          c.razorpayPaymentId === clean ||
+          clean.includes(c.id) ||
+          c.id.includes(clean)
+        );
+        if (target) {
+          setSelectedCase(target);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load case for inspection:', err);
+    }
+  }, [cases]);
+
   const handleScanComplete = async () => {
     await syncLiveRazorpayData(false);
 
@@ -629,10 +672,7 @@ export default function App() {
           {currentTab === 'activity' && (
             <ActivityView
               activities={activities}
-              onOpenCaseId={(caseId) => {
-                const target = cases.find(c => c.id === caseId);
-                if (target) setSelectedCase(target);
-              }}
+              onOpenCaseId={handleOpenCaseById}
             />
           )}
 
