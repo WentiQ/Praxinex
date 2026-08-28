@@ -65,7 +65,7 @@ export const Header: React.FC<HeaderProps> = ({
             onChange={(e) => setDateRange(e.target.value)}
             className="appearance-none bg-white border border-[#E7E7E7] hover:border-neutral-400 text-xs text-[#171717] font-medium py-1.5 pl-3 pr-7 rounded-md cursor-pointer focus:outline-none focus:ring-1 focus:ring-neutral-900 transition-colors"
           >
-            <option value="today">Today (Aug 26)</option>
+            <option value="today">Today ({new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})</option>
             <option value="7d">Last 7 Days</option>
             <option value="30d">Last 30 Days</option>
             <option value="month">This Month</option>

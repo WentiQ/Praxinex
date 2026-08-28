@@ -40,7 +40,17 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
 
     const matchesRisk = selectedRisk === 'all' || c.risk === selectedRisk;
     const matchesIssue = selectedIssue === 'all' || c.issue === selectedIssue;
-    const matchesStatus = selectedStatus === 'all' || c.status === selectedStatus;
+    
+    let matchesStatus = true;
+    if (selectedStatus === 'Recovered') {
+      matchesStatus = c.status === 'Recovered';
+    } else if (selectedStatus === 'Needs review') {
+      matchesStatus = c.status === 'Needs review';
+    } else if (selectedStatus === 'Awaiting payment') {
+      matchesStatus = c.status === 'Awaiting payment' || c.status === 'In progress';
+    } else if (selectedStatus !== 'all') {
+      matchesStatus = c.status === selectedStatus;
+    }
 
     return matchesSearch && matchesRisk && matchesIssue && matchesStatus;
   });
@@ -50,7 +60,7 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
 
   const allCount = cases.length;
   const needsReviewCount = cases.filter(c => c.status === 'Needs review').length;
-  const awaitingCount = cases.filter(c => c.status === 'Awaiting payment').length;
+  const awaitingCount = cases.filter(c => c.status === 'Awaiting payment' || c.status === 'In progress').length;
   const recoveredCount = cases.filter(c => c.status === 'Recovered').length;
 
   return (
@@ -209,9 +219,9 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
                 </tr>
               ) : (
                 filteredCases.map((c) => {
-                  const isRecovered = c.status === 'Recovered' || c.recommendedAction.toLowerCase().includes('recovered') || c.recommendedAction.toLowerCase().includes('none') || Boolean(c.recoveredAmount && c.recoveredAmount > 0);
-                  const isNeedsReview = !isRecovered && c.status === 'Needs review';
-                  const isAwaiting = !isRecovered && (c.status === 'Awaiting payment' || c.status === 'In progress');
+                  const isRecovered = c.status === 'Recovered';
+                  const isNeedsReview = c.status === 'Needs review';
+                  const isAwaiting = c.status === 'Awaiting payment' || c.status === 'In progress';
 
                   return (
                     <tr

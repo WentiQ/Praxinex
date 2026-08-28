@@ -33,9 +33,9 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 }) => {
   if (!isOpen || !caseItem) return null;
 
-  const isRecovered = caseItem.status === 'Recovered' || caseItem.recommendedAction.toLowerCase().includes('recovered') || caseItem.recommendedAction.toLowerCase().includes('none') || Boolean(caseItem.recoveredAmount && caseItem.recoveredAmount > 0);
-  const isNeedsReview = !isRecovered && caseItem.status === 'Needs review';
-  const isAwaiting = !isRecovered && (caseItem.status === 'Awaiting payment' || caseItem.status === 'In progress');
+  const isRecovered = caseItem.status === 'Recovered';
+  const isNeedsReview = caseItem.status === 'Needs review';
+  const isAwaiting = caseItem.status === 'Awaiting payment' || caseItem.status === 'In progress';
 
   return (
     <div 
@@ -45,11 +45,11 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     >
       <div 
         id="case-detail-modal-container"
-        className="bg-white border border-[#E7E7E7] rounded-xl shadow-xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]"
+        className="bg-white border border-[#E7E7E7] rounded-xl shadow-xl w-full max-w-4xl overflow-hidden flex flex-col h-[85vh] max-h-[85vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className="p-6 border-b border-[#EAEAEA] flex items-center justify-between bg-white">
+        <div className="p-6 border-b border-[#EAEAEA] flex items-center justify-between bg-white shrink-0">
           <div>
             <div className="flex items-center space-x-3">
               <h2 className="text-xl font-bold text-[#171717] tracking-tight">
@@ -107,10 +107,10 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
         </div>
 
         {/* Modal Body: Two-Column Layout */}
-        <div className="p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-8 divide-y md:divide-y-0 md:divide-x divide-[#EAEAEA]">
-          {/* LEFT: Recovery timeline */}
-          <div className="space-y-4 pr-0 md:pr-4" id="timeline-column">
-            <div className="flex items-center justify-between">
+        <div className="p-6 flex-1 min-h-0 overflow-hidden grid grid-cols-1 md:grid-cols-2 gap-8 divide-y md:divide-y-0 md:divide-x divide-[#EAEAEA]">
+          {/* LEFT: Recovery timeline (Independently Scrollable) */}
+          <div className="space-y-4 pr-0 md:pr-4 overflow-y-auto h-full" id="timeline-column">
+            <div className="flex items-center justify-between sticky top-0 bg-white pb-2 z-10">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-[#737373]">
                 Recovery timeline
               </h3>
@@ -120,7 +120,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
             </div>
 
             {/* Thin vertical timeline */}
-            <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-[1px] before:bg-neutral-200">
+            <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-[1px] before:bg-neutral-200 pb-4">
               {[...caseItem.timeline]
                 .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
                 .map((event, idx) => {
@@ -196,10 +196,10 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
             </div>
           </div>
 
-          {/* RIGHT: AI decision & Bounded action */}
-          <div className="space-y-5 pl-0 md:pl-8 pt-6 md:pt-0" id="ai-decision-column">
+          {/* RIGHT: AI decision & Bounded action (Independent Panel) */}
+          <div className="space-y-5 pl-0 md:pl-8 pt-6 md:pt-0 overflow-y-auto h-full pr-1" id="ai-decision-column">
             <div>
-              <div className="flex items-center space-x-1.5 text-xs font-semibold uppercase tracking-wider text-[#737373] mb-3">
+              <div className="flex items-center space-x-1.5 text-xs font-semibold uppercase tracking-wider text-[#737373] mb-3 sticky top-0 bg-white pb-1 z-10">
                 <Sparkles className="w-3.5 h-3.5 text-neutral-600" />
                 <span>AI decision</span>
               </div>
@@ -309,7 +309,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 px-6 bg-[#FAFAFA] border-t border-[#EAEAEA] flex items-center justify-between text-xs text-[#737373]">
+        <div className="p-4 px-6 bg-[#FAFAFA] border-t border-[#EAEAEA] flex items-center justify-between text-xs text-[#737373] shrink-0">
           <div className="flex items-center space-x-3 font-mono text-[11px]">
             <span>Payment ID: {caseItem.razorpayPaymentId || 'N/A'}</span>
             <span>•</span>

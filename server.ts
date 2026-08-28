@@ -663,8 +663,16 @@ app.get('/api/razorpay/sync', async (req, res) => {
       };
     });
 
-    // Base candidate cases to attach payment links to
-    const allCandidateCases: any[] = [...liveCasesStore, ...invoiceCases];
+    // Base candidate cases to attach payment links to (Strictly deduplicated)
+    const candidateMap = new Map<string, any>();
+    for (const c of [...liveCasesStore, ...invoiceCases]) {
+      if (c && c.id) {
+        if (!candidateMap.has(c.id) || c.status === 'Recovered') {
+          candidateMap.set(c.id, c);
+        }
+      }
+    }
+    const allCandidateCases: any[] = Array.from(candidateMap.values());
 
     // Known base cases to anchor all generated payment links & recovery actions
     const baseKnownCases = [
@@ -1101,8 +1109,30 @@ app.get('/api/razorpay/sync', async (req, res) => {
       }
     });
 
+    // Final guarantee: Deduplicate allRealCases strictly by case ID
+    const cleanCasesMap = new Map<string, any>();
+    for (const c of allRealCases) {
+      if (!c || !c.id) continue;
+      const existing = cleanCasesMap.get(c.id);
+      if (!existing) {
+        cleanCasesMap.set(c.id, c);
+      } else {
+        const isRecovered = existing.status === 'Recovered' || c.status === 'Recovered';
+        cleanCasesMap.set(c.id, {
+          ...existing,
+          ...c,
+          status: isRecovered ? 'Recovered' : (c.status || existing.status),
+          recommendedAction: isRecovered ? 'None (Recovered)' : (c.recommendedAction || existing.recommendedAction),
+          recoveredAmount: isRecovered ? (c.recoveredAmount || existing.recoveredAmount || c.amount || existing.amount) : 0,
+          paymentLinkUrl: c.paymentLinkUrl || existing.paymentLinkUrl,
+          timeline: [...(existing.timeline || []), ...(c.timeline || []).filter((t: any) => !(existing.timeline || []).some((et: any) => et.id === t.id))]
+        });
+      }
+    }
+    const finalCleanCases = Array.from(cleanCasesMap.values());
+
     // Sort every case's timeline in chronological sequence
-    allRealCases.forEach((c: any) => {
+    finalCleanCases.forEach((c: any) => {
       if (Array.isArray(c.timeline)) {
         c.timeline.sort((a: any, b: any) => {
           const timeA = new Date(a.timestamp || 0).getTime();
@@ -1120,7 +1150,7 @@ app.get('/api/razorpay/sync', async (req, res) => {
     });
 
     // Persist synchronized cases to database
-    db.saveCases(allRealCases).catch(() => {});
+    db.saveCases(finalCleanCases).catch(() => {});
 
     res.json({
       success: true,
@@ -1131,7 +1161,7 @@ app.get('/api/razorpay/sync', async (req, res) => {
         orders: orders.length,
         customers: mappedCustomers.length,
         payments: mappedPayments.length,
-        webhooks: webhooks.length
+        cases: finalCleanCases.length
       },
       raw: {
         invoices,
@@ -1141,7 +1171,7 @@ app.get('/api/razorpay/sync', async (req, res) => {
         webhooks
       },
       transformed: {
-        cases: allRealCases,
+        cases: finalCleanCases,
         customers: mappedCustomers,
         payments: mappedPayments,
         activities: liveActivitiesStore

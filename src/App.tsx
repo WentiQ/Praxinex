@@ -96,15 +96,21 @@ export default function App() {
       .filter(c => c.status === 'Recovered')
       .reduce((sum, c) => sum + (c.recoveredAmount || c.amount || 0), 0);
 
-    return [
-      { date: 'Aug 21', revenueAtRisk: Math.round(activeAtRisk * 0.45), recovered: Math.round(totalRecovered * 0.1), remaining: Math.round(activeAtRisk * 0.45) },
-      { date: 'Aug 22', revenueAtRisk: Math.round(activeAtRisk * 0.6), recovered: Math.round(totalRecovered * 0.25), remaining: Math.round(activeAtRisk * 0.6) },
-      { date: 'Aug 23', revenueAtRisk: Math.round(activeAtRisk * 0.75), recovered: Math.round(totalRecovered * 0.45), remaining: Math.round(activeAtRisk * 0.75) },
-      { date: 'Aug 24', revenueAtRisk: Math.round(activeAtRisk * 0.85), recovered: Math.round(totalRecovered * 0.65), remaining: Math.round(activeAtRisk * 0.85) },
-      { date: 'Aug 25', revenueAtRisk: Math.round(activeAtRisk * 0.92), recovered: Math.round(totalRecovered * 0.8), remaining: Math.round(activeAtRisk * 0.92) },
-      { date: 'Aug 26', revenueAtRisk: Math.round(activeAtRisk * 0.98), recovered: Math.round(totalRecovered * 0.9), remaining: Math.round(activeAtRisk * 0.98) },
-      { date: 'Today', revenueAtRisk: activeAtRisk, recovered: totalRecovered, remaining: activeAtRisk }
-    ];
+    const now = new Date();
+    const points = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(now.getDate() - i);
+      const label = i === 0 ? 'Today' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const factor = i === 0 ? 1 : 0.45 + ((6 - i) * 0.09);
+      points.push({
+        date: label,
+        revenueAtRisk: i === 0 ? activeAtRisk : Math.round(activeAtRisk * factor),
+        recovered: i === 0 ? totalRecovered : Math.round(totalRecovered * (factor * 0.9)),
+        remaining: i === 0 ? activeAtRisk : Math.round(activeAtRisk * factor)
+      });
+    }
+    return points;
   }, [cases]);
 
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -140,37 +146,34 @@ export default function App() {
 
         if (realCases && realCases.length > 0) {
           setCases(prev => {
-            const merged = realCases.map((rc: any) => {
-              const existing = prev.find(p => p.id === rc.id || (p.invoiceNumber && p.invoiceNumber === rc.invoiceNumber));
+            const casesMap = new Map<string, any>();
+            for (const p of prev) {
+              if (p && p.id) casesMap.set(p.id, p);
+            }
+            for (const rc of realCases) {
+              if (!rc || !rc.id) continue;
+              const existing = casesMap.get(rc.id);
               if (existing) {
-                // Merge timelines so newly added action and audit events are preserved
-                const existingTimelineIds = new Set(existing.timeline.map((t: any) => t.id));
+                const existingTimelineIds = new Set((existing.timeline || []).map((t: any) => t.id));
                 const mergedTimeline = [
-                  ...existing.timeline,
-                  ...rc.timeline.filter((t: any) => !existingTimelineIds.has(t.id))
+                  ...(existing.timeline || []),
+                  ...(rc.timeline || []).filter((t: any) => !existingTimelineIds.has(t.id))
                 ];
-
-                // Check if this case is recovered from server or existing
-                const isRecovered = rc.status === 'Recovered' || rc.recommendedAction === 'None (Recovered)' || existing.status === 'Recovered' || Boolean(rc.recoveredAmount && rc.recoveredAmount > 0);
-
-                return {
+                const isRecovered = rc.status === 'Recovered' || existing.status === 'Recovered';
+                casesMap.set(rc.id, {
+                  ...existing,
                   ...rc,
-                  paymentLinkUrl: rc.paymentLinkUrl || existing.paymentLinkUrl,
-                  razorpayPaymentId: rc.razorpayPaymentId || existing.razorpayPaymentId,
                   status: isRecovered ? 'Recovered' : rc.status,
                   recommendedAction: isRecovered ? 'None (Recovered)' : rc.recommendedAction,
                   recoveredAmount: isRecovered ? (rc.recoveredAmount || rc.amount || existing.recoveredAmount) : 0,
                   recoveredAt: isRecovered ? (rc.recoveredAt || existing.recoveredAt || 'Captured') : undefined,
                   timeline: mergedTimeline
-                };
+                });
+              } else {
+                casesMap.set(rc.id, rc);
               }
-              return rc;
-            });
-
-            // Also keep any extra non-duplicate cases
-            const realIds = new Set(merged.map((c: any) => c.id));
-            const extra = prev.filter(p => !realIds.has(p.id));
-            return [...merged, ...extra];
+            }
+            return Array.from(casesMap.values());
           });
 
           // Live update selectedCase if open
