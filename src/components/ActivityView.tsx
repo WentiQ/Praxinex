@@ -37,6 +37,11 @@ export const ActivityView: React.FC<ActivityViewProps> = ({
 
   const filteredActivities = activities
     .filter((act) => {
+      // Exclude pure simulated intake events
+      if (act.id?.startsWith('act-sim-')) return false;
+      if (act.eventTitle === 'Revenue risk detected' || act.eventTitle?.startsWith('Revenue risk:')) return false;
+      if (act.result === 'Ingested into active recovery queue') return false;
+
       if (filterType === 'success') return act.resultStatus === 'success';
       if (filterType === 'escalated') return act.resultStatus === 'warning';
       return true;

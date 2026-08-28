@@ -54,8 +54,25 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   onViewAllCases,
   onExecuteAction
 }) => {
-  // Top 5 critical cases requiring attention or recent
-  const displayCases = cases.slice(0, 6);
+  const getCaseLastUpdatedTime = (c: RecoveryCase): number => {
+    if (Array.isArray(c.timeline) && c.timeline.length > 0) {
+      const latestTimeline = c.timeline.reduce((max, t) => {
+        const time = t.timestamp ? new Date(t.timestamp).getTime() : 0;
+        return time > max ? time : max;
+      }, 0);
+      if (latestTimeline > 0) return latestTimeline;
+    }
+    if (c.createdAt) {
+      const time = new Date(c.createdAt).getTime();
+      if (!isNaN(time) && time > 0) return time;
+    }
+    return 0;
+  };
+
+  // Top critical cases sorted by latest updated first
+  const displayCases = [...cases]
+    .sort((a, b) => getCaseLastUpdatedTime(b) - getCaseLastUpdatedTime(a))
+    .slice(0, 6);
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8" id="overview-content">

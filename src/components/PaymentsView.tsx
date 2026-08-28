@@ -24,15 +24,29 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  const filteredPayments = payments.filter((p) => {
-    const matchesSearch = 
-      p.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.customerEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.razorpayPaymentId.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const getPaymentTimestamp = (p: PaymentRecord): number => {
+    if (p.isoTimestamp) {
+      const t = new Date(p.isoTimestamp).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+    if (p.timestamp) {
+      const t = new Date(p.timestamp).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+    return 0;
+  };
+
+  const filteredPayments = payments
+    .filter((p) => {
+      const matchesSearch = 
+        p.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.customerEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.razorpayPaymentId.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    })
+    .sort((a, b) => getPaymentTimestamp(b) - getPaymentTimestamp(a));
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6" id="payments-page-container">

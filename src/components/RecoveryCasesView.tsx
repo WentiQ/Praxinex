@@ -31,29 +31,46 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
   const [selectedIssue, setSelectedIssue] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
 
-  const filteredCases = cases.filter((c) => {
-    const matchesSearch = 
-      c.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.customerEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.companyName && c.companyName.toLowerCase().includes(searchQuery.toLowerCase()));
-
-    const matchesRisk = selectedRisk === 'all' || c.risk === selectedRisk;
-    const matchesIssue = selectedIssue === 'all' || c.issue === selectedIssue;
-    
-    let matchesStatus = true;
-    if (selectedStatus === 'Recovered') {
-      matchesStatus = c.status === 'Recovered';
-    } else if (selectedStatus === 'Needs review') {
-      matchesStatus = c.status === 'Needs review';
-    } else if (selectedStatus === 'Awaiting payment') {
-      matchesStatus = c.status === 'Awaiting payment' || c.status === 'In progress';
-    } else if (selectedStatus !== 'all') {
-      matchesStatus = c.status === selectedStatus;
+  const getCaseLastUpdatedTime = (c: RecoveryCase): number => {
+    if (Array.isArray(c.timeline) && c.timeline.length > 0) {
+      const latestTimeline = c.timeline.reduce((max, t) => {
+        const time = t.timestamp ? new Date(t.timestamp).getTime() : 0;
+        return time > max ? time : max;
+      }, 0);
+      if (latestTimeline > 0) return latestTimeline;
     }
+    if (c.createdAt) {
+      const time = new Date(c.createdAt).getTime();
+      if (!isNaN(time) && time > 0) return time;
+    }
+    return 0;
+  };
 
-    return matchesSearch && matchesRisk && matchesIssue && matchesStatus;
-  });
+  const filteredCases = cases
+    .filter((c) => {
+      const matchesSearch = 
+        c.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.customerEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (c.companyName && c.companyName.toLowerCase().includes(searchQuery.toLowerCase()));
+
+      const matchesRisk = selectedRisk === 'all' || c.risk === selectedRisk;
+      const matchesIssue = selectedIssue === 'all' || c.issue === selectedIssue;
+      
+      let matchesStatus = true;
+      if (selectedStatus === 'Recovered') {
+        matchesStatus = c.status === 'Recovered';
+      } else if (selectedStatus === 'Needs review') {
+        matchesStatus = c.status === 'Needs review';
+      } else if (selectedStatus === 'Awaiting payment') {
+        matchesStatus = c.status === 'Awaiting payment' || c.status === 'In progress';
+      } else if (selectedStatus !== 'all') {
+        matchesStatus = c.status === selectedStatus;
+      }
+
+      return matchesSearch && matchesRisk && matchesIssue && matchesStatus;
+    })
+    .sort((a, b) => getCaseLastUpdatedTime(b) - getCaseLastUpdatedTime(a));
 
   const totalFilteredRisk = filteredCases.reduce((sum, c) => sum + (c.status !== 'Recovered' ? c.amount : 0), 0);
   const totalFilteredRecovered = filteredCases.reduce((sum, c) => sum + (c.status === 'Recovered' ? (c.recoveredAmount || c.amount) : 0), 0);

@@ -89,15 +89,15 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
-        {/* Simulate Payment Failure Button (For interactive demo) */}
+        {/* Simulate Payment Traffic & Live Razorpay Generator */}
         <button
           id="simulate-risk-button"
           onClick={onSimulateFailure}
-          className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 bg-white border border-[#E7E7E7] hover:bg-neutral-50 rounded-md transition-colors cursor-pointer"
-          title="Inject a test failure event into the system"
+          className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium text-neutral-800 bg-white border border-[#E7E7E7] hover:border-neutral-400 hover:bg-neutral-50 rounded-md transition-all cursor-pointer shadow-2xs group"
+          title="Open Live Razorpay Traffic & Failure Simulator"
         >
-          <PlusCircle className="w-3.5 h-3.5 text-neutral-500" />
-          <span>Simulate failure</span>
+          <PlusCircle className="w-3.5 h-3.5 text-emerald-600 group-hover:rotate-90 transition-transform" />
+          <span>Simulate Live Traffic</span>
         </button>
 
         {/* Run Recovery Scan Primary Button */}

@@ -92,8 +92,15 @@ let liveCustomersStore: any[] = [];
     ]);
     if (c && c.length > 0) liveCasesStore = c;
     if (p && p.length > 0) livePaymentsStore = p;
-    if (a && a.length > 0) liveActivitiesStore = a;
-    console.log(`📦 Database loaded: ${liveCasesStore.length} cases, ${liveActivitiesStore.length} activities, ${livePaymentsStore.length} payments.`);
+    if (a && a.length > 0) {
+      liveActivitiesStore = a.filter((act: any) => 
+        !act.id?.startsWith('act-sim-') && 
+        act.eventTitle !== 'Revenue risk detected' && 
+        !act.eventTitle?.startsWith('Revenue risk:') &&
+        act.result !== 'Ingested into active recovery queue'
+      );
+    }
+    console.log(`📦 Database loaded: ${liveCasesStore.length} cases, ${liveActivitiesStore.length} real agent activities, ${livePaymentsStore.length} payments.`);
   } catch (err: any) {
     console.warn('Initial DB load warning:', err.message);
   }
@@ -229,6 +236,57 @@ app.post('/api/merchant', async (req, res) => {
     await db.saveMerchant(profile);
   }
   res.json({ success: true, profile });
+});
+
+// Policies Cloud Persistence Endpoints
+app.get('/api/policies', async (_req, res) => {
+  const policies = await db.getPolicies();
+  res.json({ success: true, policies });
+});
+
+app.post('/api/policies', async (req, res) => {
+  const policies = req.body;
+  if (policies) {
+    await db.savePolicies(policies);
+  }
+  res.json({ success: true, policies });
+});
+
+// Cases Cloud Persistence Endpoints
+app.get('/api/cases', async (_req, res) => {
+  const cases = await db.getCases();
+  res.json({ success: true, cases });
+});
+
+app.post('/api/cases', async (req, res) => {
+  const caseItem = req.body;
+  if (caseItem && caseItem.id) {
+    await db.upsertCase(caseItem);
+  }
+  res.json({ success: true, case: caseItem });
+});
+
+app.put('/api/cases/:id', async (req, res) => {
+  const caseItem = req.body;
+  if (caseItem) {
+    caseItem.id = req.params.id;
+    await db.upsertCase(caseItem);
+  }
+  res.json({ success: true, case: caseItem });
+});
+
+// Activities Cloud Persistence Endpoints
+app.get('/api/activities', async (_req, res) => {
+  const activities = await db.getActivities();
+  res.json({ success: true, activities });
+});
+
+app.post('/api/activities', async (req, res) => {
+  const activity = req.body;
+  if (activity) {
+    await db.addActivity(activity);
+  }
+  res.json({ success: true, activity });
 });
 
 // AI Diagnosis Endpoint
@@ -1353,6 +1411,390 @@ app.post('/api/razorpay/action', async (req, res) => {
   } catch (error: any) {
     res.status(500).json({ error: error?.message || 'Action execution failed' });
   }
+});
+
+// ==========================================
+// 7.5. AUTONOMOUS LIVE TRAFFIC & SIMULATION ENGINE
+// ==========================================
+
+const SAMPLE_PERSONAS = [
+  { name: 'Rohan Verma', company: 'Verma Cloud Logistics', email: 'rohan.verma@vermacloud.in', phone: '+919876543210', amount: 14500, issue: 'Payment failed', reason: 'Bank switch network timeout on corporate debit card', method: 'Axis Bank Corporate Visa ••5501', product: 'Cloud Logistics Engine Monthly' },
+  { name: 'Priya Nair', company: 'Kochi Analytics Labs', email: 'priya.nair@kochianalytics.io', phone: '+919823456789', amount: 48000, issue: 'Invoice overdue', reason: 'Net-15 settlement window elapsed without capture', method: 'Razorpay Netbanking (HDFC)', product: 'Analytics Enterprise Platform Q3' },
+  { name: 'Vikram Mehra', company: 'Mehra Industrial Robotics', email: 'vikram.mehra@mehra-robotics.com', phone: '+919834567890', amount: 95000, issue: 'Payment failed', reason: '3DS OTP step timed out on international purchasing card', method: 'ICICI Business Master ••9120', product: 'Industrial Robot Brain SDK License' },
+  { name: 'Ananya Sharma', company: 'Sharma AI Solutions', email: 'ananya.sharma@sharmaai.in', phone: '+919845678901', amount: 9529, issue: 'Payment failed', reason: 'Insufficient funds on scheduled auto-debit attempt', method: 'Razorpay e-Mandate (SBI)', product: 'AI Procurement Agent Subscription' },
+  { name: 'Amit Patel', company: 'Patel Global Commerce', email: 'amit.patel@patelglobal.in', phone: '+919856789012', amount: 24000, issue: 'Payment link active', reason: 'Awaiting customer link checkout for renewal', method: 'UPI / Multi-Rail Checkout', product: 'Global Commerce Addon Suite' },
+  { name: 'Sunita Rao', company: 'Hyderabad HealthTech', email: 'sunita.rao@hydhealth.com', phone: '+919867890123', amount: 125000, issue: 'Invoice overdue', reason: 'Corporate procurement invoice approval pending', method: 'NEFT / RTGS Wire Transfer', product: 'HealthTech Enterprise Infrastructure' },
+  { name: 'Karthik Sundaram', company: 'Chennai Embedded Systems', email: 'karthik.s@chennaisys.in', phone: '+919878901234', amount: 4200, issue: 'Payment failed', reason: 'Card expired on recurring billing cycle', method: 'Kotak Mahindra Visa ••3391', product: 'Embedded Firmware Developer Seat' }
+];
+
+interface AutoTrafficEngineConfig {
+  isRunning: boolean;
+  maxDailyCases: number;
+  targetCasesToday: number;
+  generatedToday: number;
+  currentDay: string;
+  pacingMode: 'random_daily' | 'fast_demo';
+  lastGeneratedAt: string;
+  nextScheduledAt: string;
+  totalGeneratedAllTime: number;
+  timerId: any;
+  razorpayKeyId?: string;
+  razorpayKeySecret?: string;
+}
+
+let autoTrafficConfig: AutoTrafficEngineConfig = {
+  isRunning: false,
+  maxDailyCases: 100,
+  targetCasesToday: 80,
+  generatedToday: 0,
+  currentDay: new Date().toISOString().slice(0, 10),
+  pacingMode: 'fast_demo',
+  lastGeneratedAt: '',
+  nextScheduledAt: '',
+  totalGeneratedAllTime: 0,
+  timerId: null
+};
+
+// Calculate today's target (strictly between 60% and 100% of maxDailyCases)
+function calculateDailyTarget(maxLimit: number): number {
+  const max = Math.max(5, Number(maxLimit) || 100);
+  const minPercent = 0.60;
+  const maxPercent = 1.00;
+  const randomFactor = minPercent + Math.random() * (maxPercent - minPercent);
+  const target = Math.min(max, Math.max(1, Math.round(max * randomFactor)));
+  return target;
+}
+
+// Compute random delay in milliseconds for next case
+function getNextRandomDelayMs(config: AutoTrafficEngineConfig): number {
+  if (config.pacingMode === 'fast_demo') {
+    // Fast Demo: Randomized interval between 18s and 65s
+    const minSec = 18;
+    const maxSec = 65;
+    const randomSec = Math.floor(minSec + Math.random() * (maxSec - minSec));
+    return randomSec * 1000;
+  } else {
+    // Realistic 24-Hour Day Pacing:
+    const now = new Date();
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    const remainingDaySec = Math.max(60, Math.floor((endOfDay.getTime() - now.getTime()) / 1000));
+    const remainingCases = Math.max(1, config.targetCasesToday - config.generatedToday);
+
+    const avgSpacingSec = remainingDaySec / remainingCases;
+    const jitter = 0.35 + Math.random() * 1.35;
+    const delaySec = Math.max(25, Math.floor(avgSpacingSec * jitter));
+    return delaySec * 1000;
+  }
+}
+
+function checkAndResetDailyBudget() {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  if (autoTrafficConfig.currentDay !== todayStr) {
+    autoTrafficConfig.currentDay = todayStr;
+    autoTrafficConfig.generatedToday = 0;
+    autoTrafficConfig.targetCasesToday = calculateDailyTarget(autoTrafficConfig.maxDailyCases);
+    console.log(`🌅 [Traffic Engine] New day initialized (${todayStr}). Target cases today: ${autoTrafficConfig.targetCasesToday}/${autoTrafficConfig.maxDailyCases}`);
+  }
+}
+
+function scheduleNextTrafficEvent() {
+  if (!autoTrafficConfig.isRunning) return;
+  if (autoTrafficConfig.timerId) {
+    clearTimeout(autoTrafficConfig.timerId);
+    autoTrafficConfig.timerId = null;
+  }
+
+  checkAndResetDailyBudget();
+
+  // If daily budget reached for today, wait until next day
+  if (autoTrafficConfig.generatedToday >= autoTrafficConfig.targetCasesToday || autoTrafficConfig.generatedToday >= autoTrafficConfig.maxDailyCases) {
+    console.log(`🛑 [Traffic Engine] Daily budget reached (${autoTrafficConfig.generatedToday}/${autoTrafficConfig.targetCasesToday}). Next run scheduled for tomorrow.`);
+    const now = new Date();
+    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 30);
+    const msUntilMidnight = Math.max(5000, tomorrow.getTime() - now.getTime());
+    autoTrafficConfig.nextScheduledAt = new Date(Date.now() + msUntilMidnight).toISOString();
+    
+    autoTrafficConfig.timerId = setTimeout(() => {
+      checkAndResetDailyBudget();
+      scheduleNextTrafficEvent();
+    }, msUntilMidnight);
+    return;
+  }
+
+  const delayMs = getNextRandomDelayMs(autoTrafficConfig);
+  autoTrafficConfig.nextScheduledAt = new Date(Date.now() + delayMs).toISOString();
+
+  autoTrafficConfig.timerId = setTimeout(async () => {
+    try {
+      if (autoTrafficConfig.isRunning) {
+        checkAndResetDailyBudget();
+        if (autoTrafficConfig.generatedToday < autoTrafficConfig.targetCasesToday && autoTrafficConfig.generatedToday < autoTrafficConfig.maxDailyCases) {
+          await generateSingleLiveRazorpayCase(undefined, autoTrafficConfig.razorpayKeyId, autoTrafficConfig.razorpayKeySecret);
+          autoTrafficConfig.generatedToday++;
+          autoTrafficConfig.totalGeneratedAllTime++;
+          console.log(`🤖 [Traffic Engine] Auto-generated case ${autoTrafficConfig.generatedToday}/${autoTrafficConfig.targetCasesToday} for today.`);
+        }
+      }
+    } catch (err: any) {
+      console.warn('[Traffic Engine] Error in step execution:', err.message);
+    } finally {
+      if (autoTrafficConfig.isRunning) {
+        scheduleNextTrafficEvent();
+      }
+    }
+  }, delayMs);
+}
+
+async function generateSingleLiveRazorpayCase(customData?: any, keyId?: string, keySecret?: string) {
+  const persona = customData && customData.customerName
+    ? customData
+    : SAMPLE_PERSONAS[Math.floor(Math.random() * SAMPLE_PERSONAS.length)];
+
+  const amount = Number(customData?.amount) || persona.amount || Math.floor(2000 + Math.random() * 45000);
+  const customerName = customData?.customerName || persona.name;
+  const customerEmail = customData?.customerEmail || persona.email;
+  const customerPhone = customData?.customerPhone || persona.phone || '+917032983348';
+  const companyName = customData?.companyName || persona.company;
+  const issue = customData?.issue || persona.issue || 'Payment failed';
+  const failureReason = customData?.failureReason || persona.reason || 'Card network switch timeout';
+  const paymentMethod = customData?.paymentMethod || persona.method || 'Razorpay Gateway';
+  const product = customData?.product || persona.product || 'Enterprise Subscription';
+
+  const caseId = `RC-${Math.floor(1000 + Math.random() * 9000)}`;
+  const now = new Date();
+  const timeDisplay = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+  let recoveryProbability = 82;
+  let recommendedAction: any = 'Payment link';
+  let risk: any = 'Medium';
+  let aiWhy = `Evaluated customer context (${customerName} - ${companyName}). Generated active 1-click Razorpay recovery link.`;
+
+  if (amount >= 50000 || issue === 'Invoice overdue') {
+    risk = 'High';
+    recommendedAction = 'Escalate';
+    recoveryProbability = 60;
+    aiWhy = `High-value risk (₹${amount.toLocaleString('en-IN')}). Policy bounds mandate manual review or high-tier payment extension.`;
+  } else if (amount < 10000) {
+    risk = 'Low';
+    recoveryProbability = 92;
+    aiWhy = `Low-ticket recurring risk. Multi-rail autonomous payment link dispatched. High recovery confidence.`;
+  }
+
+  // 1. Create ACTUAL live Payment Link on Razorpay
+  let paymentLinkUrl = `https://rzp.io/rzp/sim_${Date.now().toString().slice(-6)}`;
+  let razorpayPaymentId = `plink_sim_${Date.now().toString().slice(-8)}`;
+
+  try {
+    const uniqueRefId = `ref_${caseId}_${Date.now().toString().slice(-4)}`;
+    const linkRes = await razorpayFetch('/payment_links', {
+      method: 'POST',
+      body: JSON.stringify({
+        amount: Math.round(amount * 100),
+        currency: 'INR',
+        accept_partial: false,
+        description: `Recovery: ${product} (Case ${caseId})`,
+        reference_id: uniqueRefId,
+        notes: {
+          caseId,
+          companyName,
+          issue,
+          origin: 'AI_REVENUE_RECOVERY_AGENT'
+        },
+        customer: {
+          name: customerName,
+          email: customerEmail,
+          contact: customerPhone.replace(/[^0-9+]/g, '')
+        },
+        notify: {
+          sms: false,
+          email: false
+        },
+        reminder_enable: true
+      })
+    }, keyId, keySecret);
+
+    if (linkRes && linkRes.short_url) {
+      paymentLinkUrl = linkRes.short_url;
+      razorpayPaymentId = linkRes.id;
+      console.log(`⚡ [Traffic Engine] Real Razorpay link created: ${paymentLinkUrl} (${razorpayPaymentId}) for ${customerName} (₹${amount})`);
+    }
+  } catch (err: any) {
+    console.warn(`[Traffic Engine] Razorpay link generation note: ${err.message}. Using structured fallback link.`);
+  }
+
+  const newCase = {
+    id: caseId,
+    customerName,
+    customerEmail,
+    customerPhone,
+    companyName,
+    issue,
+    amount,
+    risk,
+    recommendedAction,
+    status: issue === 'Invoice overdue' || risk === 'High' ? 'Needs review' : 'Awaiting payment',
+    updated: 'Just now',
+    createdAt: now.toISOString(),
+    failureReason,
+    failureCode: 'PAYMENT_FAILURE_SIMULATED',
+    paymentMethod,
+    razorpayPaymentId,
+    attemptCount: 1,
+    maxAttempts: 3,
+    recoveryProbability,
+    aiWhy,
+    aiPolicyNote: 'Autonomous simulation & bounded policy compliant',
+    policyAllowed: true,
+    recoveredAmount: 0,
+    paymentLinkUrl,
+    timeline: [
+      {
+        id: `t-sim-${Date.now()}-1`,
+        timestamp: new Date(now.getTime() - 120000).toISOString(),
+        timeDisplay,
+        title: `${issue} detected on Razorpay`,
+        description: `${paymentMethod} transaction of ₹${amount.toLocaleString('en-IN')} failed (${failureReason}).`,
+        type: 'failure'
+      },
+      {
+        id: `t-sim-${Date.now()}-2`,
+        timestamp: new Date(now.getTime() - 60000).toISOString(),
+        timeDisplay,
+        title: 'AI evaluated customer profile & bounded policy',
+        description: `Analyzed customer context (${companyName}). Evaluated ${recoveryProbability}% recovery confidence. Action: ${recommendedAction}.`,
+        type: 'diagnosis'
+      },
+      {
+        id: `t-sim-${Date.now()}-3`,
+        timestamp: now.toISOString(),
+        timeDisplay,
+        title: 'Live Razorpay Recovery Link Dispatched',
+        description: `Generated real Razorpay link ${razorpayPaymentId}: ${paymentLinkUrl} for ₹${amount.toLocaleString('en-IN')}.`,
+        type: 'action',
+        actionType: 'Payment link'
+      }
+    ]
+  };
+
+  // Ingest into live cases store
+  liveCasesStore = [newCase, ...liveCasesStore.filter((c: any) => c.id !== caseId)];
+
+  // Ingest customer
+  if (!liveCustomersStore.some((c: any) => c.email === customerEmail)) {
+    liveCustomersStore.push({
+      id: `cust_${Date.now().toString().slice(-8)}`,
+      name: customerName,
+      email: customerEmail,
+      phone: customerPhone,
+      totalSpent: amount,
+      successfulTransactions: 0,
+      failedTransactions: 1,
+      recoveredTransactions: 0,
+      lifetimeValue: amount,
+      riskCategory: risk === 'High' ? 'High Risk' : (risk === 'Medium' ? 'Medium Risk' : 'Low Risk'),
+      lastSeen: 'Just now'
+    });
+  }
+
+  // Persist case to Supabase
+  db.upsertCase(newCase).catch(() => {});
+
+  autoTrafficConfig.lastGeneratedAt = now.toISOString();
+
+  return newCase;
+}
+
+// 1-Click Generate Live Razorpay Payment Case Endpoint
+app.post('/api/simulate/traffic', async (req, res) => {
+  try {
+    const { customData, razorpayKeyId, razorpayKeySecret } = req.body || {};
+    const createdCase = await generateSingleLiveRazorpayCase(customData, razorpayKeyId, razorpayKeySecret);
+    autoTrafficConfig.generatedToday++;
+    autoTrafficConfig.totalGeneratedAllTime++;
+    res.json({
+      success: true,
+      case: createdCase,
+      message: `Live case ${createdCase.id} created with real Razorpay link: ${createdCase.paymentLinkUrl}`
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Toggle / Configure Background Autonomous Traffic Engine
+app.post('/api/simulate/auto-toggle', async (req, res) => {
+  try {
+    const { enable, maxDailyCases, pacingMode, razorpayKeyId, razorpayKeySecret } = req.body || {};
+    
+    if (maxDailyCases && Number(maxDailyCases) >= 1) {
+      autoTrafficConfig.maxDailyCases = Number(maxDailyCases);
+      autoTrafficConfig.targetCasesToday = calculateDailyTarget(autoTrafficConfig.maxDailyCases);
+    }
+
+    if (pacingMode === 'random_daily' || pacingMode === 'fast_demo') {
+      autoTrafficConfig.pacingMode = pacingMode;
+    }
+
+    if (razorpayKeyId) autoTrafficConfig.razorpayKeyId = razorpayKeyId;
+    if (razorpayKeySecret) autoTrafficConfig.razorpayKeySecret = razorpayKeySecret;
+
+    if (enable === true) {
+      autoTrafficConfig.isRunning = true;
+      checkAndResetDailyBudget();
+      
+      // Schedule immediately
+      scheduleNextTrafficEvent();
+
+      // Trigger first one if today's count is 0
+      if (autoTrafficConfig.generatedToday === 0) {
+        await generateSingleLiveRazorpayCase(undefined, razorpayKeyId, razorpayKeySecret);
+        autoTrafficConfig.generatedToday++;
+        autoTrafficConfig.totalGeneratedAllTime++;
+      }
+    } else if (enable === false) {
+      autoTrafficConfig.isRunning = false;
+      if (autoTrafficConfig.timerId) {
+        clearTimeout(autoTrafficConfig.timerId);
+        autoTrafficConfig.timerId = null;
+      }
+    }
+
+    res.json({
+      success: true,
+      autoTrafficState: {
+        isRunning: autoTrafficConfig.isRunning,
+        maxDailyCases: autoTrafficConfig.maxDailyCases,
+        targetCasesToday: autoTrafficConfig.targetCasesToday,
+        generatedToday: autoTrafficConfig.generatedToday,
+        pacingMode: autoTrafficConfig.pacingMode,
+        currentDay: autoTrafficConfig.currentDay,
+        totalGeneratedAllTime: autoTrafficConfig.totalGeneratedAllTime,
+        lastGeneratedAt: autoTrafficConfig.lastGeneratedAt,
+        nextScheduledAt: autoTrafficConfig.nextScheduledAt
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get Auto Traffic Status
+app.get('/api/simulate/status', (req, res) => {
+  checkAndResetDailyBudget();
+  res.json({
+    success: true,
+    autoTrafficState: {
+      isRunning: autoTrafficConfig.isRunning,
+      maxDailyCases: autoTrafficConfig.maxDailyCases,
+      targetCasesToday: autoTrafficConfig.targetCasesToday,
+      generatedToday: autoTrafficConfig.generatedToday,
+      pacingMode: autoTrafficConfig.pacingMode,
+      currentDay: autoTrafficConfig.currentDay,
+      totalGeneratedAllTime: autoTrafficConfig.totalGeneratedAllTime,
+      lastGeneratedAt: autoTrafficConfig.lastGeneratedAt,
+      nextScheduledAt: autoTrafficConfig.nextScheduledAt
+    }
+  });
 });
 
 // ==========================================

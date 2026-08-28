@@ -74,7 +74,28 @@ export default function App() {
     } catch {}
   };
 
+  const [policies, setPolicies] = useState<RecoveryPolicy>(() => {
+    try {
+      const saved = localStorage.getItem('recovery_policies_data');
+      if (saved) return { ...INITIAL_POLICIES, ...JSON.parse(saved) };
+    } catch {}
+    return INITIAL_POLICIES;
+  });
+
+  const handleUpdatePolicies = (updated: RecoveryPolicy) => {
+    setPolicies(updated);
+    try {
+      localStorage.setItem('recovery_policies_data', JSON.stringify(updated));
+      fetch('/api/policies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      }).catch(() => {});
+    } catch {}
+  };
+
   useEffect(() => {
+    // Load merchant settings from database
     fetch('/api/merchant')
       .then(res => res.json())
       .then(data => {
@@ -83,9 +104,18 @@ export default function App() {
         }
       })
       .catch(() => {});
+
+    // Load policies from database
+    fetch('/api/policies')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.success && data.policies) {
+          setPolicies(prev => ({ ...prev, ...data.policies }));
+        }
+      })
+      .catch(() => {});
   }, []);
 
-  const [policies, setPolicies] = useState<RecoveryPolicy>(INITIAL_POLICIES);
   const [payments, setPayments] = useState<PaymentRecord[]>(PAYMENT_LEDGER);
   const [customers, setCustomers] = useState<CustomerRecord[]>(CUSTOMER_DIRECTORY);
 
@@ -301,6 +331,21 @@ export default function App() {
 
     setActivities(prev => [newActivity, ...prev]);
 
+    // Persist case and activity to database
+    try {
+      fetch('/api/cases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedCase)
+      }).catch(() => {});
+
+      fetch('/api/activities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newActivity)
+      }).catch(() => {});
+    } catch {}
+
     // Update Payments ledger
     if (isSuccess) {
       const newPayment: PaymentRecord = {
@@ -321,27 +366,6 @@ export default function App() {
 
   const handleAddSimulatedCase = (newCase: RecoveryCase) => {
     setCases(prev => [newCase, ...prev]);
-
-    const now = new Date();
-    const timeDisplay = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    const newActivity: ActivityEvent = {
-      id: `act-sim-${Date.now()}`,
-      timestamp: now.toISOString(),
-      timeDisplay,
-      dateDisplay: 'Today',
-      eventTitle: 'Revenue risk detected',
-      caseId: newCase.id,
-      customerName: newCase.customerName,
-      amount: newCase.amount,
-      decision: `Diagnosed: ${newCase.recommendedAction}`,
-      reason: newCase.failureReason,
-      policy: 'Intake compliance verified',
-      result: 'Ingested into active recovery queue',
-      resultStatus: 'info'
-    };
-
-    setActivities(prev => [newActivity, ...prev]);
     setSelectedCase(newCase);
   };
 
@@ -512,7 +536,7 @@ export default function App() {
           {currentTab === 'policies' && (
             <PoliciesView
               policy={policies}
-              onUpdatePolicy={setPolicies}
+              onUpdatePolicy={handleUpdatePolicies}
             />
           )}
 
@@ -597,6 +621,8 @@ export default function App() {
         isOpen={isSimulateOpen}
         onClose={() => setIsSimulateOpen(false)}
         onAddCase={handleAddSimulatedCase}
+        merchant={merchant}
+        onSync={() => syncLiveRazorpayData(false)}
       />
 
       {/* Batch Scan Progress Modal */}

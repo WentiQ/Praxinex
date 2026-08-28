@@ -7,7 +7,9 @@ dotenv.config();
 
 export interface DBStore {
   merchant: any | null;
+  policies: any | null;
   cases: any[];
+  customers: any[];
   activities: any[];
   payments: any[];
 }
@@ -25,7 +27,9 @@ class DatabaseManager {
   private isSupabaseActive: boolean = false;
   private localCache: DBStore = {
     merchant: null,
+    policies: null,
     cases: [],
+    customers: [],
     activities: [],
     payments: []
   };
@@ -128,6 +132,38 @@ class DatabaseManager {
     }
   }
 
+  // --- Recovery Policies ---
+  async getPolicies(): Promise<any | null> {
+    if (this.isSupabaseActive && this.supabase) {
+      try {
+        const { data, error } = await this.supabase
+          .from('merchant_settings')
+          .select('*')
+          .eq('id', 'recovery_policies')
+          .single();
+        if (data && !error && data.profile) return data.profile;
+      } catch {}
+    }
+    return this.localCache.policies;
+  }
+
+  async savePolicies(policy: any): Promise<void> {
+    this.localCache.policies = policy;
+    this.persistLocalStore();
+
+    if (this.isSupabaseActive && this.supabase) {
+      try {
+        await this.supabase.from('merchant_settings').upsert({
+          id: 'recovery_policies',
+          profile: policy,
+          updated_at: new Date().toISOString()
+        });
+      } catch (err: any) {
+        console.warn('Supabase policies upsert error:', err.message);
+      }
+    }
+  }
+
   // --- Recovery Cases ---
   async getCases(): Promise<any[]> {
     if (this.isSupabaseActive && this.supabase) {
@@ -192,6 +228,7 @@ class DatabaseManager {
 
   // --- Activities Audit Trail ---
   async getActivities(): Promise<any[]> {
+    let list: any[] = [];
     if (this.isSupabaseActive && this.supabase) {
       try {
         const { data, error } = await this.supabase
@@ -200,11 +237,20 @@ class DatabaseManager {
           .order('timestamp', { ascending: false })
           .limit(200);
         if (data && !error && data.length > 0) {
-          return data.map(d => d.activity_data);
+          list = data.map(d => d.activity_data);
         }
       } catch {}
+    } else {
+      list = this.localCache.activities;
     }
-    return this.localCache.activities;
+
+    // Strictly filter out simulation intake placeholders — show only actions taken after creation
+    return (list || []).filter(act => 
+      !act.id?.startsWith('act-sim-') && 
+      act.eventTitle !== 'Revenue risk detected' && 
+      !act.eventTitle?.startsWith('Revenue risk:') &&
+      act.result !== 'Ingested into active recovery queue'
+    );
   }
 
   async addActivity(activity: any): Promise<void> {
