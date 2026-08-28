@@ -223,7 +223,17 @@ class DatabaseManager {
   }
 
   async saveCases(cases: any[]): Promise<void> {
-    this.localCache.cases = cases;
+    const existingMap = new Map<string, any>();
+    for (const c of this.localCache.cases) {
+      if (c && c.id) existingMap.set(c.id, c);
+    }
+    for (const c of cases) {
+      if (c && c.id) {
+        const existing = existingMap.get(c.id);
+        existingMap.set(c.id, { ...existing, ...c });
+      }
+    }
+    this.localCache.cases = Array.from(existingMap.values());
     this.persistLocalStore();
 
     if (this.isSupabaseActive && this.supabase && cases.length > 0) {

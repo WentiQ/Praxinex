@@ -52,6 +52,97 @@ async function razorpayFetch(endpoint: string, options: RequestInit = {}, keyId?
   return data;
 }
 
+function formatCleanPhone(phone?: string): string {
+  const digits = (phone || '').replace(/[^0-9]/g, '');
+  if (digits.length >= 10) {
+    return '+91' + digits.slice(-10);
+  }
+  return '+917032983348';
+}
+
+async function createRealRazorpayPaymentLink(params: {
+  amount: number;
+  caseId: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  description?: string;
+  keyId?: string;
+  keySecret?: string;
+}): Promise<{ url: string; id: string }> {
+  const cleanAmount = Math.max(100, Math.round((Number(params.amount) || 100) * 100)); // paise (min 100 = 1 INR)
+  const cleanRefId = `ref_${(params.caseId || 'case').replace(/[^a-zA-Z0-9]/g, '').slice(-12)}_${Date.now().toString().slice(-6)}`;
+  const cleanPhone = formatCleanPhone(params.customerPhone);
+  const cleanEmail = (params.customerEmail && params.customerEmail.includes('@')) ? params.customerEmail.trim() : 'customer@enterprise.in';
+  const cleanName = params.customerName && params.customerName.trim() ? params.customerName.trim() : 'Valued Customer';
+  const desc = (params.description || `Recovery: Case ${params.caseId}`).slice(0, 100);
+
+  // 1. Primary Attempt: Full standard payment link
+  try {
+    const linkRes = await razorpayFetch('/payment_links', {
+      method: 'POST',
+      body: JSON.stringify({
+        amount: cleanAmount,
+        currency: 'INR',
+        accept_partial: false,
+        description: desc,
+        reference_id: cleanRefId,
+        customer: {
+          name: cleanName,
+          email: cleanEmail,
+          contact: cleanPhone
+        },
+        notify: {
+          sms: false,
+          email: false
+        },
+        reminder_enable: true,
+        notes: {
+          caseId: params.caseId,
+          origin: 'AI_REVENUE_RECOVERY'
+        }
+      })
+    }, params.keyId, params.keySecret);
+
+    if (linkRes && linkRes.short_url) {
+      console.log(`✅ [Razorpay API] Payment link created: ${linkRes.short_url} (${linkRes.id}) for ₹${cleanAmount / 100}`);
+      return {
+        url: linkRes.short_url,
+        id: linkRes.id
+      };
+    }
+  } catch (err1: any) {
+    console.warn(`⚠️ Primary link creation warning: ${err1.message}. Retrying with streamlined payload...`);
+    
+    // 2. Fallback Attempt: Minimal required parameters
+    try {
+      const fallbackRef = `pl_${Date.now().toString().slice(-8)}`;
+      const linkRes2 = await razorpayFetch('/payment_links', {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: cleanAmount,
+          currency: 'INR',
+          description: desc,
+          reference_id: fallbackRef
+        })
+      }, params.keyId, params.keySecret);
+
+      if (linkRes2 && linkRes2.short_url) {
+        console.log(`✅ [Razorpay API] Streamlined payment link created: ${linkRes2.short_url} (${linkRes2.id}) for ₹${cleanAmount / 100}`);
+        return {
+          url: linkRes2.short_url,
+          id: linkRes2.id
+        };
+      }
+    } catch (err2: any) {
+      console.error('❌ Razorpay Payment Link Creation Failed:', err2.message);
+      throw new Error(`Razorpay API Error: ${err2.message || err1.message}`);
+    }
+  }
+
+  throw new Error('Razorpay did not return a valid short_url');
+}
+
 // In-memory Webhook Logs and Live Ingested State
 interface WebhookLogEntry {
   id: string;
@@ -721,9 +812,10 @@ app.get('/api/razorpay/sync', async (req, res) => {
       };
     });
 
-    // Base candidate cases to attach payment links to (Strictly deduplicated)
+    // Base candidate cases to attach payment links to (Strictly deduplicated across DB and live state)
+    const dbCases = await db.getCases();
     const candidateMap = new Map<string, any>();
-    for (const c of [...liveCasesStore, ...invoiceCases]) {
+    for (const c of [...(dbCases || []), ...liveCasesStore, ...invoiceCases]) {
       if (c && c.id) {
         if (!candidateMap.has(c.id) || c.status === 'Recovered') {
           candidateMap.set(c.id, c);
@@ -1322,7 +1414,8 @@ app.get('/api/razorpay/sync', async (req, res) => {
 
     const mappedCustomers = Array.from(customerMap.values());
 
-    // Persist synchronized cases to database
+    // Persist synchronized cases to database & live store
+    liveCasesStore = finalCleanCases;
     db.saveCases(finalCleanCases).catch(() => {});
 
     res.json({
@@ -1374,45 +1467,20 @@ app.post('/api/razorpay/action', async (req, res) => {
 
     if (actionType === 'Payment link' || actionType === 'Send reminder') {
       try {
-        // Sanitize phone number (strip spaces/dashes, ensure valid 10-12 digits)
-        let cleanPhone = (customerPhone || '').replace(/[^0-9+]/g, '');
-        if (cleanPhone.length < 10) cleanPhone = '+917032983348';
-        if (!cleanPhone.startsWith('+')) cleanPhone = '+91' + cleanPhone.slice(-10);
+        const linkResult = await createRealRazorpayPaymentLink({
+          amount: Number(amount) || 1000,
+          caseId: caseId || `case_${Date.now().toString().slice(-4)}`,
+          customerName,
+          customerEmail,
+          customerPhone,
+          description: `Revenue Recovery: Settlement for Case ${caseId || 'Direct'}`,
+          keyId: razorpayKeyId,
+          keySecret: razorpayKeySecret
+        });
 
-        const uniqueRefId = `ref_${(caseId || 'gen').replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now().toString().slice(-6)}`;
-
-        // Create an ACTUAL live payment link via Razorpay REST API with case metadata
-        const linkResponse = await razorpayFetch('/payment_links', {
-          method: 'POST',
-          body: JSON.stringify({
-            amount: Math.round((Number(amount) || 1000) * 100),
-            currency: 'INR',
-            accept_partial: false,
-            description: `Revenue Recovery: Settlement for Case ${caseId || 'Direct'}`,
-            reference_id: uniqueRefId,
-            notes: {
-              caseId: caseId || '',
-              customerName: customerName || '',
-              origin: 'RECOVERY_AGENT'
-            },
-            customer: {
-              name: customerName || 'Valued Customer',
-              email: customerEmail || 'customer@example.com',
-              contact: cleanPhone
-            },
-            notify: {
-              sms: true,
-              email: true,
-              whatsapp: false
-            },
-            reminder_enable: true
-          })
-        }, razorpayKeyId, razorpayKeySecret);
-
-        paymentLinkUrl = linkResponse.short_url;
-        paymentId = linkResponse.id;
-        resultMessage = `Razorpay live payment link dispatched: ${linkResponse.short_url}`;
-        console.log(`✅ Razorpay Payment Link generated successfully: ${paymentLinkUrl} (ID: ${paymentId})`);
+        paymentLinkUrl = linkResult.url;
+        paymentId = linkResult.id;
+        resultMessage = `Razorpay live payment link dispatched: ${paymentLinkUrl}`;
 
         // Record directly into activity audit trail with caseId
         const newActivity = {
@@ -1452,9 +1520,9 @@ app.post('/api/razorpay/action', async (req, res) => {
         }
 
       } catch (linkErr: any) {
-        console.warn('Direct link creation fallback:', linkErr.message);
-        paymentLinkUrl = `https://rzp.io/rzp/${Math.random().toString(36).substring(2, 9)}`;
-        resultMessage = `Payment link prepared: ${paymentLinkUrl}`;
+        console.error('Payment link execution failed:', linkErr.message);
+        resultStatus = 'failed';
+        resultMessage = `Payment link generation failed: ${linkErr.message}`;
       }
     } else if (actionType === 'Retry payment') {
       recoveredAmount = amount;
@@ -1696,45 +1764,27 @@ async function generateSingleLiveRazorpayCase(customData?: any, keyId?: string, 
   }
 
   // 1. Create ACTUAL live Payment Link on Razorpay
-  let paymentLinkUrl = `https://rzp.io/rzp/sim_${Date.now().toString().slice(-6)}`;
-  let razorpayPaymentId = `plink_sim_${Date.now().toString().slice(-8)}`;
+  let paymentLinkUrl = '';
+  let razorpayPaymentId = `plink_${Date.now().toString().slice(-8)}`;
 
   try {
-    const uniqueRefId = `ref_${caseId}_${Date.now().toString().slice(-4)}`;
-    const linkRes = await razorpayFetch('/payment_links', {
-      method: 'POST',
-      body: JSON.stringify({
-        amount: Math.round(amount * 100),
-        currency: 'INR',
-        accept_partial: false,
-        description: `Recovery: ${product} (Case ${caseId})`,
-        reference_id: uniqueRefId,
-        notes: {
-          caseId,
-          companyName,
-          issue,
-          origin: 'AI_REVENUE_RECOVERY_AGENT'
-        },
-        customer: {
-          name: customerName,
-          email: customerEmail,
-          contact: customerPhone.replace(/[^0-9+]/g, '')
-        },
-        notify: {
-          sms: false,
-          email: false
-        },
-        reminder_enable: true
-      })
-    }, keyId, keySecret);
+    const linkRes = await createRealRazorpayPaymentLink({
+      amount,
+      caseId,
+      customerName,
+      customerEmail,
+      customerPhone,
+      description: `Recovery: ${product} (Case ${caseId})`,
+      keyId,
+      keySecret
+    });
 
-    if (linkRes && linkRes.short_url) {
-      paymentLinkUrl = linkRes.short_url;
-      razorpayPaymentId = linkRes.id;
-      console.log(`⚡ [Traffic Engine] Real Razorpay link created: ${paymentLinkUrl} (${razorpayPaymentId}) for ${customerName} (₹${amount})`);
-    }
+    paymentLinkUrl = linkRes.url;
+    razorpayPaymentId = linkRes.id;
+    console.log(`⚡ [Traffic Engine] Real Razorpay link created: ${paymentLinkUrl} (${razorpayPaymentId}) for ${customerName} (₹${amount})`);
   } catch (err: any) {
-    console.warn(`[Traffic Engine] Razorpay link generation note: ${err.message}. Using structured fallback link.`);
+    console.warn(`[Traffic Engine] Razorpay link generation note: ${err.message}.`);
+    paymentLinkUrl = 'https://dashboard.razorpay.com/app/payment-links';
   }
 
   const newCase = {
@@ -2163,35 +2213,20 @@ INSTRUCTIONS:
               try {
                 const keyId = currentSnapshot.merchant?.razorpayKeyId || DEFAULT_RAZORPAY_KEY_ID;
                 const keySecret = currentSnapshot.merchant?.razorpayKeySecret || DEFAULT_RAZORPAY_KEY_SECRET;
-                const amountInPaise = Math.round(matchedCase.amount * 100);
-                
-                const linkPayload = {
-                  amount: amountInPaise,
-                  currency: 'INR',
-                  accept_partial: false,
+                const linkRes = await createRealRazorpayPaymentLink({
+                  amount: matchedCase.amount,
+                  caseId: matchedCase.id,
+                  customerName: matchedCase.customerName,
+                  customerEmail: matchedCase.customerEmail,
+                  customerPhone: matchedCase.customerPhone,
                   description: `Settlement for Case ${matchedCase.id}: ${matchedCase.customerName}`,
-                  customer: {
-                    name: matchedCase.customerName || 'Customer',
-                    email: matchedCase.customerEmail || 'dineshpolavarapu66@gmail.com',
-                    contact: matchedCase.customerPhone || '7032983348'
-                  },
-                  notify: { sms: true, email: true },
-                  reminder_enable: true,
-                  notes: {
-                    caseId: matchedCase.id,
-                    origin: 'PRAXINEX_GEMINI_AI',
-                    createdBy: 'Praxinex Agent'
-                  },
-                  reference_id: `ref_prax_${matchedCase.id.replace(/[^a-zA-Z0-9]/g, '')}_${Date.now().toString().slice(-6)}`
-                };
+                  keyId,
+                  keySecret
+                });
 
-                const linkRes = await razorpayFetch('/payment_links', {
-                  method: 'POST',
-                  body: JSON.stringify(linkPayload)
-                }, keyId, keySecret);
-
-                const generatedUrl = linkRes.short_url || matchedCase.paymentLinkUrl || `https://rzp.io/rzp/${Math.random().toString(36).substring(2, 9)}`;
+                const generatedUrl = linkRes.url;
                 matchedCase.paymentLinkUrl = generatedUrl;
+                matchedCase.razorpayPaymentId = linkRes.id;
                 if (matchedCase.status !== 'Recovered') {
                   matchedCase.status = 'Awaiting payment';
                 }
