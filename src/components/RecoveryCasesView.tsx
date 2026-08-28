@@ -13,7 +13,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { RecoveryCase, RiskLevel, IssueType, CaseStatus } from '../types';
-import { formatINR } from '../utils/formatters';
+import { formatINR, formatCaseTimeAgo } from '../utils/formatters';
 
 interface RecoveryCasesViewProps {
   cases: RecoveryCase[];
@@ -347,9 +347,9 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
                         </span>
                       </td>
 
-                      {/* Updated */}
-                      <td className="py-3.5 px-4 text-[11px] text-[#737373] font-mono">
-                        {c.updated}
+                      {/* Updated (Dynamic Relative Time Elapsed) */}
+                      <td className="py-3.5 px-4 text-[11px] text-[#737373] font-mono whitespace-nowrap">
+                        {formatCaseTimeAgo(c)}
                       </td>
 
                       {/* Action */}

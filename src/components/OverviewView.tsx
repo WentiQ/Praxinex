@@ -23,7 +23,7 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 import { RecoveryCase } from '../types';
-import { formatINR } from '../utils/formatters';
+import { formatINR, formatCaseTimeAgo } from '../utils/formatters';
 
 interface OverviewViewProps {
   cases: RecoveryCase[];
@@ -439,9 +439,9 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                       </span>
                     </td>
 
-                    {/* Updated */}
-                    <td className="py-3.5 px-4 text-[11px] text-[#737373] font-mono">
-                      {c.updated}
+                    {/* Updated (Dynamic Relative Time Elapsed) */}
+                    <td className="py-3.5 px-4 text-[11px] text-[#737373] font-mono whitespace-nowrap">
+                      {formatCaseTimeAgo(c)}
                     </td>
 
                     {/* Action Button */}

@@ -15,11 +15,12 @@ import {
   Info,
   ExternalLink
 } from 'lucide-react';
-import { RecoveryCase } from '../types';
+import { RecoveryCase, PaymentRecord } from '../types';
 import { formatINR, formatTimelineDateTime } from '../utils/formatters';
 
 interface CaseDetailModalProps {
   caseItem: RecoveryCase | null;
+  payments?: PaymentRecord[];
   isOpen: boolean;
   onClose: () => void;
   onExecuteAction: (caseItem: RecoveryCase) => void;
@@ -27,6 +28,7 @@ interface CaseDetailModalProps {
 
 export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   caseItem,
+  payments = [],
   isOpen,
   onClose,
   onExecuteAction
@@ -36,6 +38,47 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const isRecovered = caseItem.status === 'Recovered';
   const isNeedsReview = caseItem.status === 'Needs review';
   const isAwaiting = caseItem.status === 'Awaiting payment' || caseItem.status === 'In progress';
+
+  // Combine caseItem.timeline with any matching live payments from Payments Ledger in real-time
+  const liveTimelineEvents = React.useMemo(() => {
+    const events = [...(caseItem.timeline || [])];
+    const existingIds = new Set(events.map((t: any) => t.id));
+
+    if (payments && payments.length > 0) {
+      const cEmail = (caseItem.customerEmail || '').toLowerCase();
+      const cId = caseItem.id;
+      const rzpId = caseItem.razorpayPaymentId;
+
+      payments.forEach(p => {
+        const pEmail = (p.customerEmail || '').toLowerCase();
+        const pId = p.razorpayPaymentId || p.id;
+        const isMatch = (p.caseId && (cId === p.caseId || cId.includes(p.caseId) || p.caseId.includes(cId))) ||
+                        (rzpId && (rzpId === pId || rzpId === p.id)) ||
+                        (pEmail && cEmail && pEmail === cEmail);
+
+        if (isMatch) {
+          const tId = `t-pay-live-${pId}`;
+          if (!existingIds.has(tId) && !existingIds.has(`t-pay-${pId}`) && !existingIds.has(pId)) {
+            const isSuccess = p.status === 'succeeded';
+            events.push({
+              id: tId,
+              timestamp: p.isoTimestamp || (p.timestamp ? new Date(p.timestamp).toISOString() : new Date().toISOString()),
+              timeDisplay: p.timestamp || 'Just now',
+              title: isSuccess ? `Payment captured: ${formatINR(p.amount)}` : `Payment attempt failed (${p.failureReason || p.method || 'Declined'})`,
+              description: isSuccess
+                ? `Razorpay confirmed capture of ${formatINR(p.amount)} via ${p.method || 'Gateway'} (ref: ${pId}). Revenue recovered.`
+                : `Payment attempt ${pId} for ${formatINR(p.amount)} failed (${p.failureReason || 'Declined by bank network'}).`,
+              type: isSuccess ? 'success' : 'failure',
+              actionType: isSuccess ? 'Recovery' : 'Payment link'
+            });
+            existingIds.add(tId);
+          }
+        }
+      });
+    }
+
+    return events.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+  }, [caseItem, payments]);
 
   return (
     <div 
@@ -115,14 +158,13 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 Recovery timeline
               </h3>
               <span className="text-[11px] font-mono text-neutral-400">
-                Audit Trail ({caseItem.timeline.length} events)
+                Audit Trail ({liveTimelineEvents.length} events)
               </span>
             </div>
 
             {/* Thin vertical timeline */}
             <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-[1px] before:bg-neutral-200 pb-4">
-              {[...caseItem.timeline]
-                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+              {liveTimelineEvents
                 .map((event, idx) => {
                   const isSuccess = event.type === 'success';
                   const isFailure = event.type === 'failure';

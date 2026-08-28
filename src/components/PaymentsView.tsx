@@ -118,8 +118,11 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                     key={p.id}
                     className="hover:bg-[#F9FAFB] transition-colors"
                   >
-                    <td className="py-3.5 px-5 font-mono text-[11px] text-neutral-600 font-medium">
-                      {p.razorpayPaymentId}
+                    <td className="py-3.5 px-5 font-mono text-[11px] text-neutral-700 font-medium">
+                      <div className="flex items-center space-x-1.5">
+                        <CreditCard className="w-3.5 h-3.5 text-neutral-400" />
+                        <span>{p.razorpayPaymentId}</span>
+                      </div>
                     </td>
 
                     <td className="py-3.5 px-4 font-medium text-[#171717]">
@@ -164,8 +167,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
                     <td className="py-3.5 px-5 text-right font-mono text-[11px]">
                       {p.recoveredByAgent ? (
-                        <span className="text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                          ✓ Agent Recovered
+                        <span className="text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-flex items-center">
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
+                          Agent Recovered
                         </span>
                       ) : (
                         <span className="text-neutral-400">—</span>

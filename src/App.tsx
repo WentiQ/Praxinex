@@ -117,7 +117,75 @@ export default function App() {
   }, []);
 
   const [payments, setPayments] = useState<PaymentRecord[]>(PAYMENT_LEDGER);
-  const [customers, setCustomers] = useState<CustomerRecord[]>(CUSTOMER_DIRECTORY);
+  const [syncedCustomers, setSyncedCustomers] = useState<CustomerRecord[]>([]);
+
+  // Dynamically calculate and update Customers in real-time from all cases and payments
+  const customers: CustomerRecord[] = useMemo(() => {
+    const map = new Map<string, CustomerRecord>();
+
+    // 1. Initial base customers
+    CUSTOMER_DIRECTORY.forEach(c => {
+      map.set(c.email.toLowerCase(), { ...c });
+    });
+
+    // 2. Synced customers from Razorpay
+    syncedCustomers.forEach(c => {
+      const email = (c.email || '').toLowerCase().trim();
+      if (!email) return;
+      map.set(email, { ...c });
+    });
+
+    // 3. Dynamic Aggregation from all live cases
+    cases.forEach(cs => {
+      if (!cs || !cs.customerEmail) return;
+      const email = cs.customerEmail.toLowerCase().trim();
+      const existing = map.get(email) || {
+        id: `cust_${cs.id}`,
+        name: cs.customerName || 'Customer',
+        email: cs.customerEmail || 'finance@merchant.in',
+        phone: cs.customerPhone || '+91 98765 43210',
+        totalSpent: 0,
+        successfulTransactions: 0,
+        failedTransactions: 0,
+        recoveredTransactions: 0,
+        lifetimeValue: 0,
+        riskCategory: 'Low Risk',
+        lastSeen: cs.updated || 'Just now'
+      };
+
+      const caseAmount = Number(cs.amount) || 0;
+      const recAmount = Number(cs.recoveredAmount) || caseAmount;
+
+      if (cs.status === 'Recovered') {
+        existing.recoveredTransactions += 1;
+        existing.successfulTransactions += 1;
+        existing.totalSpent += recAmount;
+        existing.lifetimeValue += recAmount;
+      } else {
+        existing.failedTransactions += 1;
+        existing.lifetimeValue += caseAmount;
+        if (cs.risk === 'High') existing.riskCategory = 'High Risk';
+        else if (cs.risk === 'Medium' && existing.riskCategory !== 'High Risk') existing.riskCategory = 'Medium Risk';
+      }
+
+      existing.lastSeen = cs.updated || 'Just now';
+      map.set(email, existing);
+    });
+
+    // 4. Update from payments
+    payments.forEach(p => {
+      if (!p || !p.customerEmail) return;
+      const email = p.customerEmail.toLowerCase().trim();
+      const existing = map.get(email);
+      if (existing && p.status === 'succeeded') {
+        if (existing.successfulTransactions === 0) existing.successfulTransactions = 1;
+        existing.totalSpent = Math.max(existing.totalSpent, Number(p.amount) || 0);
+        existing.lifetimeValue = Math.max(existing.lifetimeValue, existing.totalSpent);
+      }
+    });
+
+    return Array.from(map.values());
+  }, [cases, payments, syncedCustomers]);
 
   // Dynamic Real-Time Trend Data calculated directly from live cases & settlements
   const trendData = useMemo(() => {
@@ -233,7 +301,7 @@ export default function App() {
         }
 
         if (realCustomers && realCustomers.length > 0) {
-          setCustomers(prev => {
+          setSyncedCustomers(prev => {
             const existingEmails = new Set(realCustomers.map((c: any) => c.email));
             const retained = prev.filter(c => !existingEmails.has(c.email));
             return [...realCustomers, ...retained];
@@ -502,8 +570,9 @@ export default function App() {
           {currentTab === 'payments' && (
             <PaymentsView
               payments={payments}
+              cases={cases}
               onOpenCaseId={(caseId) => {
-                const target = cases.find(c => c.id === caseId);
+                const target = cases.find(c => c.id === caseId || c.razorpayPaymentId === caseId || (c.customerEmail && caseId.includes(c.customerEmail)));
                 if (target) setSelectedCase(target);
               }}
             />
@@ -603,6 +672,7 @@ export default function App() {
       {/* Case Detail Modal / Drawer */}
       <CaseDetailModal
         caseItem={selectedCase}
+        payments={payments}
         isOpen={!!selectedCase && !executingCase}
         onClose={() => setSelectedCase(null)}
         onExecuteAction={handleStartExecuteAction}
