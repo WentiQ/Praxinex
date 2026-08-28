@@ -17,6 +17,19 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { RecoveryCase, IssueType, MerchantProfile } from '../types';
+import firstNames from '../../data/first_names.json';
+import lastNames from '../../data/last_names.json';
+
+const getRandomDatasetCustomer = () => {
+  const fn = firstNames[Math.floor(Math.random() * firstNames.length)] || 'Aarav';
+  const ln = lastNames[Math.floor(Math.random() * lastNames.length)] || 'Sharma';
+  return {
+    name: `${fn} ${ln}`,
+    email: `${fn.toLowerCase()}${ln.toLowerCase()}@gmail.com`,
+    company: `${ln} Tech`,
+    phone: `+9198${Math.floor(10000000 + Math.random() * 89999999)}`
+  };
+};
 
 interface SimulateFailureModalProps {
   isOpen: boolean;
@@ -37,15 +50,29 @@ export const SimulateFailureModal: React.FC<SimulateFailureModalProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [lastCreatedCase, setLastCreatedCase] = useState<RecoveryCase | null>(null);
 
-  // Custom Form States
-  const [customerName, setCustomerName] = useState('Ananya Sharma');
-  const [customerEmail, setCustomerEmail] = useState('ananya.sharma@sharmaai.in');
-  const [customerPhone, setCustomerPhone] = useState('+919845678901');
-  const [companyName, setCompanyName] = useState('Sharma AI Solutions');
+  // Dynamic Custom Form States initialized from 2500x2500 Dataset
+  const [customerName, setCustomerName] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const [amount, setAmount] = useState<number>(14500);
-  const [issue, setIssue] = useState<IssueType>('Payment failed');
-  const [failureReason, setFailureReason] = useState('Bank switch network timeout on corporate debit card');
-  const [paymentMethod, setPaymentMethod] = useState('Axis Bank Corporate Visa ••5501');
+  const [issue, setIssue] = useState<IssueType>('Checkout abandoned');
+  const [failureReason, setFailureReason] = useState('Customer added to cart and clicked checkout, but exited before completing payment');
+  const [paymentMethod, setPaymentMethod] = useState('Razorpay Gateway');
+
+  const randomizeCustomCustomer = () => {
+    const p = getRandomDatasetCustomer();
+    setCustomerName(p.name);
+    setCustomerEmail(p.email);
+    setCustomerPhone(p.phone);
+    setCompanyName(p.company);
+  };
+
+  useEffect(() => {
+    if (isOpen && !customerName) {
+      randomizeCustomCustomer();
+    }
+  }, [isOpen]);
 
   // Auto Traffic Engine States
   const [isAutoRunning, setIsAutoRunning] = useState(false);
@@ -201,7 +228,7 @@ export const SimulateFailureModal: React.FC<SimulateFailureModalProps> = ({
               <h3 className="text-sm font-semibold text-[#171717]">Live Payment Traffic & Simulator</h3>
             </div>
             <p className="text-[11px] text-[#737373] mt-0.5">
-              Simulates realistic failed transactions strictly generated on <span className="font-semibold text-neutral-800">Razorpay API</span> with real checkout links.
+              Simulates cart checkouts using <span className="font-semibold text-neutral-800">2,500 First Names × 2,500 Last Names</span>, generates 1st Payment Links, and tracks until Payment Done.
             </p>
           </div>
           <button 
@@ -262,7 +289,7 @@ export const SimulateFailureModal: React.FC<SimulateFailureModalProps> = ({
               <div className="bg-emerald-50/80 border border-emerald-200 rounded-lg p-3.5 flex items-start space-x-2.5 text-xs text-emerald-900">
                 <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-semibold">Razorpay REST API Integration Active:</span> Each simulation creates genuine Razorpay Payment Links and orders via <span className="font-mono text-[11px]">POST /v1/payment_links</span> that immediately appear in your Razorpay Dashboard.
+                  <span className="font-semibold">6.25M Customer Combinations & Real Links:</span> Randomizes 1st & last names from the 2,500 × 2,500 dataset, assigns <span className="font-mono text-[11px]">&lt;firstname&gt;&lt;lastname&gt;@gmail.com</span>, picks multiples of 10 up to ₹10,00,000, and generates the initial payment link to start tracking.
                 </div>
               </div>
 
@@ -273,80 +300,68 @@ export const SimulateFailureModal: React.FC<SimulateFailureModalProps> = ({
                   className="p-4 border border-neutral-200 hover:border-neutral-900 rounded-xl text-left transition-all hover:shadow-xs bg-white hover:bg-neutral-50/50 group cursor-pointer"
                 >
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-semibold text-xs text-neutral-900 group-hover:text-black">⚡ Random Persona (₹2k - ₹95k)</span>
+                    <span className="font-semibold text-xs text-neutral-900 group-hover:text-black">⚡ Dynamic Checkout (2500×2500)</span>
                     <span className="text-[10px] font-mono px-1.5 py-0.5 bg-neutral-100 rounded text-neutral-600">Auto Pick</span>
                   </div>
                   <p className="text-[11px] text-neutral-500">
-                    Randomizes Indian buyer persona, reason, and amount with live Razorpay link generation.
+                    Random customer from dataset, amount in multiples of 10 up to ₹10L, 1st Payment Link created & tracked.
                   </p>
                 </button>
 
                 <button
                   onClick={() => handleQuickGenerate({
-                    name: 'Rohan Verma',
-                    company: 'Verma Cloud Logistics',
-                    email: 'rohan.verma@vermacloud.in',
-                    phone: '+919876543210',
+                    issue: 'Checkout abandoned',
                     amount: 14500,
-                    issue: 'Payment failed',
-                    reason: 'Bank switch network timeout on corporate debit card',
+                    failureReason: 'Customer added to cart and clicked checkout, but exited before completing payment',
                     product: 'Cloud Logistics Engine Monthly'
                   })}
                   disabled={isGenerating}
                   className="p-4 border border-neutral-200 hover:border-neutral-900 rounded-xl text-left transition-all hover:shadow-xs bg-white hover:bg-neutral-50/50 group cursor-pointer"
                 >
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-semibold text-xs text-neutral-900">Rohan Verma (₹14,500)</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded">Card Timeout</span>
+                    <span className="font-semibold text-xs text-neutral-900">🛒 Cart Abandoned (₹14,500)</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded">1st Link Active</span>
                   </div>
                   <p className="text-[11px] text-neutral-500">
-                    Verma Cloud Logistics • Corporate Visa decline with autonomous link dispatch.
+                    Checkout initiated $\rightarrow$ 1st link created $\rightarrow$ drop-off detected $\rightarrow$ AI recovery dispatched.
                   </p>
                 </button>
 
                 <button
                   onClick={() => handleQuickGenerate({
-                    name: 'Priya Nair',
-                    company: 'Kochi Analytics Labs',
-                    email: 'priya.nair@kochianalytics.io',
-                    phone: '+919823456789',
                     amount: 48000,
-                    issue: 'Invoice overdue',
-                    reason: 'Net-15 settlement window elapsed without capture',
+                    issue: 'Payment failed',
+                    failureReason: 'Bank switch network timeout during 3DS OTP authorization',
                     product: 'Analytics Enterprise Platform Q3'
                   })}
                   disabled={isGenerating}
                   className="p-4 border border-neutral-200 hover:border-neutral-900 rounded-xl text-left transition-all hover:shadow-xs bg-white hover:bg-neutral-50/50 group cursor-pointer"
                 >
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-semibold text-xs text-neutral-900">Priya Nair (₹48,000)</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded">Net-15 Overdue</span>
+                    <span className="font-semibold text-xs text-neutral-900">💳 Mid-Tier Ticket (₹48,000)</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded">Card Timeout</span>
                   </div>
                   <p className="text-[11px] text-neutral-500">
-                    Kochi Analytics Labs • Enterprise Net-15 overdue invoice requiring AI review.
+                    Mid-ticket transaction failure with automated 1-click retry payment link dispatch.
                   </p>
                 </button>
 
                 <button
                   onClick={() => handleQuickGenerate({
-                    name: 'Vikram Mehra',
-                    company: 'Mehra Industrial Robotics',
-                    email: 'vikram.mehra@mehra-robotics.com',
-                    phone: '+919834567890',
-                    amount: 95000,
-                    issue: 'Payment failed',
-                    reason: '3DS OTP step timed out on international purchasing card',
-                    product: 'Industrial Robot Brain SDK License'
+                    amount: 350000,
+                    issue: 'Checkout abandoned',
+                    failureReason: 'High-value enterprise procurement checkout pending corporate sign-off',
+                    product: 'Autonomous AI Enterprise Cluster'
                   })}
                   disabled={isGenerating}
                   className="p-4 border border-neutral-200 hover:border-neutral-900 rounded-xl text-left transition-all hover:shadow-xs bg-white hover:bg-neutral-50/50 group cursor-pointer"
                 >
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-semibold text-xs text-neutral-900">Vikram Mehra (₹95,000)</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded">High Risk (₹95k)</span>
+                    <span className="font-semibold text-xs text-neutral-900">🏢 High-Ticket (₹3,50,000)</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded">VIP Review</span>
                   </div>
                   <p className="text-[11px] text-neutral-500">
-                    Mehra Industrial Robotics • High ticket 3DS OTP timeout with bounded escalation policy.
+                    High-ticket multiple of 10 (up to ₹10 Lakhs). AI priority recovery workflow.
                   </p>
                 </button>
               </div>
@@ -469,6 +484,20 @@ export const SimulateFailureModal: React.FC<SimulateFailureModalProps> = ({
           {/* Custom Form Tab */}
           {tab === 'custom' && (
             <form onSubmit={handleCustomSubmit} className="space-y-4 text-xs">
+              <div className="flex items-center justify-between bg-neutral-100/70 p-2.5 rounded-lg border border-neutral-200">
+                <span className="text-[11px] text-neutral-600">
+                  Pick a random customer dynamically from the <strong>2,500 First × 2,500 Last Names</strong> dataset:
+                </span>
+                <button
+                  type="button"
+                  onClick={randomizeCustomCustomer}
+                  className="px-2.5 py-1 bg-white hover:bg-neutral-50 border border-neutral-300 rounded text-[11px] font-medium text-neutral-800 transition-colors flex items-center space-x-1 cursor-pointer shrink-0 shadow-2xs"
+                >
+                  <Sparkles className="w-3 h-3 text-amber-500" />
+                  <span>Randomize Pair</span>
+                </button>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="font-semibold text-neutral-800 block mb-1">Customer Name</label>

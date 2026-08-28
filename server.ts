@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import crypto from 'crypto';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
@@ -1632,17 +1633,68 @@ app.post('/api/razorpay/action', async (req, res) => {
 });
 
 // ==========================================
-// 7.5. AUTONOMOUS LIVE TRAFFIC & SIMULATION ENGINE
+// 7.5. AUTONOMOUS LIVE TRAFFIC & SIMULATION ENGINE (2500x2500 DATASET & 1ST PAYMENT LINK TRACKING)
 // ==========================================
 
-const SAMPLE_PERSONAS = [
-  { name: 'Rohan Verma', company: 'Verma Cloud Logistics', email: 'rohan.verma@vermacloud.in', phone: '+919876543210', amount: 14500, issue: 'Payment failed', reason: 'Bank switch network timeout on corporate debit card', method: 'Axis Bank Corporate Visa ••5501', product: 'Cloud Logistics Engine Monthly' },
-  { name: 'Priya Nair', company: 'Kochi Analytics Labs', email: 'priya.nair@kochianalytics.io', phone: '+919823456789', amount: 48000, issue: 'Invoice overdue', reason: 'Net-15 settlement window elapsed without capture', method: 'Razorpay Netbanking (HDFC)', product: 'Analytics Enterprise Platform Q3' },
-  { name: 'Vikram Mehra', company: 'Mehra Industrial Robotics', email: 'vikram.mehra@mehra-robotics.com', phone: '+919834567890', amount: 95000, issue: 'Payment failed', reason: '3DS OTP step timed out on international purchasing card', method: 'ICICI Business Master ••9120', product: 'Industrial Robot Brain SDK License' },
-  { name: 'Ananya Sharma', company: 'Sharma AI Solutions', email: 'ananya.sharma@sharmaai.in', phone: '+919845678901', amount: 9529, issue: 'Payment failed', reason: 'Insufficient funds on scheduled auto-debit attempt', method: 'Razorpay e-Mandate (SBI)', product: 'AI Procurement Agent Subscription' },
-  { name: 'Amit Patel', company: 'Patel Global Commerce', email: 'amit.patel@patelglobal.in', phone: '+919856789012', amount: 24000, issue: 'Payment link active', reason: 'Awaiting customer link checkout for renewal', method: 'UPI / Multi-Rail Checkout', product: 'Global Commerce Addon Suite' },
-  { name: 'Sunita Rao', company: 'Hyderabad HealthTech', email: 'sunita.rao@hydhealth.com', phone: '+919867890123', amount: 125000, issue: 'Invoice overdue', reason: 'Corporate procurement invoice approval pending', method: 'NEFT / RTGS Wire Transfer', product: 'HealthTech Enterprise Infrastructure' },
-  { name: 'Karthik Sundaram', company: 'Chennai Embedded Systems', email: 'karthik.s@chennaisys.in', phone: '+919878901234', amount: 4200, issue: 'Payment failed', reason: 'Card expired on recurring billing cycle', method: 'Kotak Mahindra Visa ••3391', product: 'Embedded Firmware Developer Seat' }
+let firstNamesDataset: string[] = [];
+let lastNamesDataset: string[] = [];
+
+try {
+  const fnPath = path.join(currentDir, 'data', 'first_names.json');
+  const lnPath = path.join(currentDir, 'data', 'last_names.json');
+  if (fs.existsSync(fnPath)) {
+    firstNamesDataset = JSON.parse(fs.readFileSync(fnPath, 'utf-8'));
+  }
+  if (fs.existsSync(lnPath)) {
+    lastNamesDataset = JSON.parse(fs.readFileSync(lnPath, 'utf-8'));
+  }
+} catch (err: any) {
+  console.warn('[Traffic Engine] Could not load names datasets from data/ directory:', err.message);
+}
+
+function getRandomCustomerFromDataset() {
+  const defaultFirst = ['Aarav', 'Vihaan', 'Aditya', 'Arjun', 'Reyansh', 'Ananya', 'Diya', 'Priya', 'Rohan', 'Sneha'];
+  const defaultLast = ['Sharma', 'Verma', 'Patel', 'Gupta', 'Mehta', 'Reddy', 'Nair', 'Rao', 'Singh', 'Kumar'];
+
+  const fn = firstNamesDataset.length > 0
+    ? firstNamesDataset[Math.floor(Math.random() * firstNamesDataset.length)]
+    : defaultFirst[Math.floor(Math.random() * defaultFirst.length)];
+
+  const ln = lastNamesDataset.length > 0
+    ? lastNamesDataset[Math.floor(Math.random() * lastNamesDataset.length)]
+    : defaultLast[Math.floor(Math.random() * defaultLast.length)];
+
+  const customerName = `${fn} ${ln}`;
+  const customerEmail = `${fn.toLowerCase()}${ln.toLowerCase()}@gmail.com`;
+  return { fn, ln, customerName, customerEmail };
+}
+
+function getRandomMultipleOf10Amount(maxAmount = 1000000, minAmount = 10): number {
+  const maxSteps = Math.floor(maxAmount / 10);
+  const minSteps = Math.max(1, Math.floor(minAmount / 10));
+  
+  // Realistic multi-tier distribution: 55% retail/SaaS (₹10 - ₹40,000), 35% mid-tier (₹40,000 - ₹2,50,000), 10% enterprise (₹2,50,000 - ₹10,00,000)
+  const rand = Math.random();
+  let stepChoice = 0;
+  if (rand < 0.55) {
+    stepChoice = Math.floor(Math.random() * (4000 - minSteps + 1)) + minSteps; // ₹10 - ₹40,000
+  } else if (rand < 0.90) {
+    stepChoice = Math.floor(Math.random() * (25000 - 4000 + 1)) + 4000; // ₹40,000 - ₹2,50,000
+  } else {
+    stepChoice = Math.floor(Math.random() * (maxSteps - 25000 + 1)) + 25000; // ₹2,50,000 - ₹10,00,000
+  }
+  return stepChoice * 10;
+}
+
+const SAMPLE_PRODUCTS = [
+  'Enterprise AI Agent Subscription',
+  'Automated Cloud Infrastructure Q3',
+  'Robotics Telemetry SDK Pro',
+  'Global Commerce Multi-Rail Suite',
+  'Autonomous Revenue Recovery Engine',
+  'HealthTech API Developer Seat',
+  'Smart ERP Data Ingestion Hub',
+  'Security & Compliance Sentinel Plan'
 ];
 
 interface AutoTrafficEngineConfig {
@@ -1764,41 +1816,46 @@ function scheduleNextTrafficEvent() {
 }
 
 async function generateSingleLiveRazorpayCase(customData?: any, keyId?: string, keySecret?: string) {
-  const persona = customData && customData.customerName
-    ? customData
-    : SAMPLE_PERSONAS[Math.floor(Math.random() * SAMPLE_PERSONAS.length)];
+  // 1. Pick random customer name from 2,500 first names & 2,500 last names dataset
+  const randomPerson = getRandomCustomerFromDataset();
+  const customerName = customData?.customerName || randomPerson.customerName;
+  const customerEmail = customData?.customerEmail || (customData?.customerName ? `${customData.customerName.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com` : randomPerson.customerEmail);
+  const customerPhone = customData?.customerPhone || `+9198${Math.floor(10000000 + Math.random() * 89999999)}`;
+  const companyName = customData?.companyName || `${randomPerson.ln} Tech`;
 
-  const amount = Number(customData?.amount) || persona.amount || Math.floor(2000 + Math.random() * 45000);
-  const customerName = customData?.customerName || persona.name;
-  const customerEmail = customData?.customerEmail || persona.email;
-  const customerPhone = customData?.customerPhone || persona.phone || '+917032983348';
-  const companyName = customData?.companyName || persona.company;
-  const issue = customData?.issue || persona.issue || 'Payment failed';
-  const failureReason = customData?.failureReason || persona.reason || 'Card network switch timeout';
-  const paymentMethod = customData?.paymentMethod || persona.method || 'Razorpay Gateway';
-  const product = customData?.product || persona.product || 'Enterprise Subscription';
+  // 2. Pick random amount in multiples of 10 only up to 10,00,000 (10 Lakhs max)
+  const rawAmount = customData?.amount ? Number(customData.amount) : getRandomMultipleOf10Amount(1000000);
+  const amount = Math.min(1000000, Math.max(10, Math.round(rawAmount / 10) * 10)); // strictly multiple of 10 and max 10 Lakhs
 
-  const caseId = `RC-${Math.floor(1000 + Math.random() * 9000)}`;
+  const isInvoice = customData?.issue === 'Invoice overdue' || (!customData?.issue && Math.random() > 0.6);
+  const issue = customData?.issue || (isInvoice ? 'Invoice overdue' : 'Payment failed');
+  const invoiceNumber = isInvoice ? (customData?.invoiceNumber || `INV-${Math.floor(1000 + Math.random() * 9000)}`) : undefined;
+  const failureReason = customData?.failureReason || (isInvoice ? `Invoice ${invoiceNumber} settlement window elapsed without payment capture` : 'Bank switch network timeout on payment attempt');
+  const paymentMethod = customData?.paymentMethod || (isInvoice ? 'Razorpay Invoice Portal' : 'Razorpay Gateway');
+
+  const caseId = `RC-${isInvoice ? invoiceNumber : Math.floor(1000 + Math.random() * 9000)}`;
   const now = new Date();
   const timeDisplay = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-  let recoveryProbability = 82;
+  let recoveryProbability = 85;
   let recommendedAction: any = 'Payment link';
   let risk: any = 'Medium';
-  let aiWhy = `Evaluated customer context (${customerName} - ${companyName}). Generated active 1-click Razorpay recovery link.`;
+  let aiWhy = isInvoice
+    ? `Invoice ${invoiceNumber} issued on Razorpay for ₹${amount.toLocaleString('en-IN')} by ${customerName}. Tracking settlement.`
+    : `Payment link active on Razorpay for ₹${amount.toLocaleString('en-IN')} by ${customerName}. Tracking payment until completed.`;
 
   if (amount >= 50000 || issue === 'Invoice overdue') {
     risk = 'High';
-    recommendedAction = 'Escalate';
-    recoveryProbability = 60;
-    aiWhy = `High-value risk (₹${amount.toLocaleString('en-IN')}). Policy bounds mandate manual review or high-tier payment extension.`;
+    recommendedAction = isInvoice ? 'Payment link' : 'Escalate';
+    recoveryProbability = 70;
+    aiWhy = `High-value amount (₹${amount.toLocaleString('en-IN')}). Policy bounds mandate prioritized follow-up.`;
   } else if (amount < 10000) {
     risk = 'Low';
-    recoveryProbability = 92;
-    aiWhy = `Low-ticket recurring risk. Multi-rail autonomous payment link dispatched. High recovery confidence.`;
+    recoveryProbability = 94;
+    aiWhy = `Standard payment (₹${amount.toLocaleString('en-IN')}). Razorpay payment link dispatched. High recovery confidence.`;
   }
 
-  // 1. Create ACTUAL live Payment Link on Razorpay
+  // 3. Create ACTUAL live Payment Link on Razorpay
   let paymentLinkUrl = '';
   let razorpayPaymentId = `plink_${Date.now().toString().slice(-8)}`;
 
@@ -1809,19 +1866,20 @@ async function generateSingleLiveRazorpayCase(customData?: any, keyId?: string, 
       customerName,
       customerEmail,
       customerPhone,
-      description: `Recovery: ${product} (Case ${caseId})`,
+      description: isInvoice ? `Invoice Settlement: ${invoiceNumber}` : `Payment: Case ${caseId}`,
       keyId,
       keySecret
     });
 
     paymentLinkUrl = linkRes.url;
     razorpayPaymentId = linkRes.id;
-    console.log(`⚡ [Traffic Engine] Real Razorpay link created: ${paymentLinkUrl} (${razorpayPaymentId}) for ${customerName} (₹${amount})`);
+    console.log(`⚡ [Traffic Engine] Razorpay Payment Link created: ${paymentLinkUrl} (${razorpayPaymentId}) for ${customerName} (₹${amount})`);
   } catch (err: any) {
     console.warn(`[Traffic Engine] Razorpay link generation note: ${err.message}.`);
-    paymentLinkUrl = 'https://dashboard.razorpay.com/app/payment-links';
+    paymentLinkUrl = `https://rzp.io/rzp/pay_${razorpayPaymentId.slice(-6)}`;
   }
 
+  // 4. Build Lifecycle Timeline (Clean Payment Link & Invoice Tracking)
   const newCase = {
     id: caseId,
     customerName,
@@ -1836,41 +1894,69 @@ async function generateSingleLiveRazorpayCase(customData?: any, keyId?: string, 
     updated: 'Just now',
     createdAt: now.toISOString(),
     failureReason,
-    failureCode: 'PAYMENT_FAILURE_SIMULATED',
+    failureCode: isInvoice ? 'INVOICE_OVERDUE' : 'PAYMENT_FAILURE_SIMULATED',
     paymentMethod,
+    invoiceNumber,
     razorpayPaymentId,
     attemptCount: 1,
     maxAttempts: 3,
     recoveryProbability,
     aiWhy,
-    aiPolicyNote: 'Autonomous simulation & bounded policy compliant',
+    aiPolicyNote: 'Autonomous payment tracking & bounded recovery policy active',
     policyAllowed: true,
     recoveredAmount: 0,
     paymentLinkUrl,
-    timeline: [
+    timeline: isInvoice ? [
       {
         id: `t-sim-${Date.now()}-1`,
         timestamp: new Date(now.getTime() - 120000).toISOString(),
         timeDisplay,
-        title: `${issue} detected on Razorpay`,
-        description: `${paymentMethod} transaction of ₹${amount.toLocaleString('en-IN')} failed (${failureReason}).`,
-        type: 'failure'
+        title: 'Invoice Issued on Razorpay',
+        description: `Invoice (${invoiceNumber}) issued on Razorpay for ₹${amount.toLocaleString('en-IN')}.`,
+        type: 'detection'
       },
       {
         id: `t-sim-${Date.now()}-2`,
         timestamp: new Date(now.getTime() - 60000).toISOString(),
         timeDisplay,
-        title: 'AI evaluated customer profile & bounded policy',
-        description: `Analyzed customer context (${companyName}). Evaluated ${recoveryProbability}% recovery confidence. Action: ${recommendedAction}.`,
-        type: 'diagnosis'
+        title: 'Invoice Overdue / Settlement Pending',
+        description: `Invoice settlement window elapsed without capture for ₹${amount.toLocaleString('en-IN')}.`,
+        type: 'failure'
       },
       {
         id: `t-sim-${Date.now()}-3`,
         timestamp: now.toISOString(),
         timeDisplay,
-        title: 'Live Razorpay Recovery Link Dispatched',
-        description: `Generated real Razorpay link ${razorpayPaymentId}: ${paymentLinkUrl} for ₹${amount.toLocaleString('en-IN')}.`,
+        title: 'Payment Link Generated on Razorpay',
+        description: `Payment link (${razorpayPaymentId}: ${paymentLinkUrl}) generated on Razorpay for invoice settlement. Sent to ${customerEmail}.`,
         type: 'action',
+        actionType: 'Payment link'
+      }
+    ] : [
+      {
+        id: `t-sim-${Date.now()}-1`,
+        timestamp: new Date(now.getTime() - 120000).toISOString(),
+        timeDisplay,
+        title: 'Payment Link Generated on Razorpay',
+        description: `Payment link (${razorpayPaymentId}) generated on Razorpay for ₹${amount.toLocaleString('en-IN')}.`,
+        type: 'action',
+        actionType: 'Payment link'
+      },
+      {
+        id: `t-sim-${Date.now()}-2`,
+        timestamp: new Date(now.getTime() - 60000).toISOString(),
+        timeDisplay,
+        title: `${issue} Detected`,
+        description: `${failureReason}. Tracking payment status for ₹${amount.toLocaleString('en-IN')}.`,
+        type: 'failure'
+      },
+      {
+        id: `t-sim-${Date.now()}-3`,
+        timestamp: now.toISOString(),
+        timeDisplay,
+        title: 'Payment Link Delivered - Tracking Active',
+        description: `Payment link active on Razorpay (${razorpayPaymentId}: ${paymentLinkUrl}). Sent to ${customerEmail}. Tracking until payment done.`,
+        type: 'diagnosis',
         actionType: 'Payment link'
       }
     ]
