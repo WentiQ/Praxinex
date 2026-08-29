@@ -114,8 +114,7 @@ class DatabaseManager {
           .not('id', 'in', '("recovery_policies","auto_traffic_state")')
           .order('updated_at', { ascending: false });
         if (data && !error && data.length > 0) {
-          const match = data.find(d => d.profile && (d.profile.razorpayKeyId || d.profile.email));
-          if (match) return match.profile;
+          // Always return the most recently saved/edited merchant profile
           return data[0].profile;
         }
       } catch {}
@@ -261,33 +260,63 @@ class DatabaseManager {
     }
   }
 
-  async saveCases(cases: any[]): Promise<void> {
-    const existingMap = new Map<string, any>();
-    for (const c of this.localCache.cases) {
-      if (c && c.id) existingMap.set(c.id, c);
-    }
-    for (const c of cases) {
-      if (c && c.id) {
-        const existing = existingMap.get(c.id);
-        existingMap.set(c.id, { ...existing, ...c });
+  async saveCases(cases: any[], replaceAll: boolean = true): Promise<void> {
+    if (replaceAll) {
+      this.localCache.cases = cases;
+    } else {
+      const existingMap = new Map<string, any>();
+      for (const c of this.localCache.cases) {
+        if (c && c.id) existingMap.set(c.id, c);
       }
+      for (const c of cases) {
+        if (c && c.id) {
+          const existing = existingMap.get(c.id);
+          existingMap.set(c.id, { ...existing, ...c });
+        }
+      }
+      this.localCache.cases = Array.from(existingMap.values());
     }
-    this.localCache.cases = Array.from(existingMap.values());
     this.persistLocalStore();
 
-    if (this.isSupabaseActive && this.supabase && cases.length > 0) {
+    if (this.isSupabaseActive && this.supabase) {
       try {
-        const rows = cases.map(c => ({
-          id: c.id,
-          customer_name: c.customerName,
-          amount: c.amount,
-          status: c.status,
-          case_data: c,
-          updated_at: new Date().toISOString()
-        }));
-        await this.supabase.from('recovery_cases').upsert(rows);
+        if (replaceAll) {
+          // Delete stale/old rows from previous keys so only active key cases remain
+          await this.supabase.from('recovery_cases').delete().neq('id', '___PLACEHOLDER___');
+        }
+        if (cases.length > 0) {
+          const rows = cases.map(c => ({
+            id: c.id,
+            customer_name: c.customerName,
+            amount: c.amount,
+            status: c.status,
+            case_data: c,
+            updated_at: new Date().toISOString()
+          }));
+          await this.supabase.from('recovery_cases').upsert(rows);
+        }
       } catch (err: any) {
-        console.warn('Supabase bulk cases upsert error:', err.message);
+        console.warn('Supabase bulk cases sync error:', err.message);
+      }
+    }
+  }
+
+  async clearAllData(): Promise<void> {
+    this.localCache.cases = [];
+    this.localCache.payments = [];
+    this.localCache.activities = [];
+    this.persistLocalStore();
+
+    if (this.isSupabaseActive && this.supabase) {
+      try {
+        await Promise.all([
+          this.supabase.from('recovery_cases').delete().neq('id', '___PLACEHOLDER___'),
+          this.supabase.from('payments_ledger').delete().neq('id', '___PLACEHOLDER___'),
+          this.supabase.from('activity_logs').delete().neq('id', '___PLACEHOLDER___')
+        ]);
+        console.log('🧹 Purged all previous account data from Supabase tables');
+      } catch (err: any) {
+        console.warn('Supabase purge error:', err.message);
       }
     }
   }

@@ -28,8 +28,8 @@ async function getActiveMerchantCredentials(customKeyId?: string, customKeySecre
     return { keyId: customKeyId.trim(), keySecret: customKeySecret.trim() };
   }
   const dbMerchant = await db.getMerchant();
-  const keyId = customKeyId?.trim() || dbMerchant?.razorpayKeyId?.trim() || process.env.RAZORPAY_KEY_ID || '';
-  const keySecret = customKeySecret?.trim() || dbMerchant?.razorpayKeySecret?.trim() || process.env.RAZORPAY_KEY_SECRET || '';
+  const keyId = customKeyId?.trim() || dbMerchant?.razorpayKeyId?.trim() || '';
+  const keySecret = customKeySecret?.trim() || dbMerchant?.razorpayKeySecret?.trim() || '';
   return { keyId, keySecret };
 }
 
@@ -38,7 +38,7 @@ async function getActiveGeminiApiKey(customApiKey?: string): Promise<string> {
     return customApiKey.trim();
   }
   const dbMerchant = await db.getMerchant();
-  return dbMerchant?.geminiApiKey?.trim() || process.env.GEMINI_API_KEY || '';
+  return dbMerchant?.geminiApiKey?.trim() || '';
 }
 
 function getRazorpayAuth(keyId: string, keySecret: string) {
@@ -625,15 +625,15 @@ app.get('/api/merchant', async (_req, res) => {
 app.post('/api/merchant', async (req, res) => {
   const profile = req.body;
   if (profile) {
+    const currentMerchant = await db.getMerchant();
+    const isKeyChanged = currentMerchant?.razorpayKeyId && profile.razorpayKeyId && currentMerchant.razorpayKeyId !== profile.razorpayKeyId;
     await db.saveMerchant(profile);
-    if (profile.razorpayKeyId && profile.razorpayKeySecret) {
+    if (isKeyChanged) {
       // Clear old account caches immediately to switch cleanly to the new credentials
       liveCasesStore = [];
       livePaymentsStore = [];
       liveActivitiesStore = [];
-      await db.saveCases([]);
-      await db.savePayments([]);
-      await db.saveActivities([]);
+      await db.clearAllData();
       console.log(`🔑 Merchant credentials updated: Switched active Razorpay account to Key ID ${profile.razorpayKeyId}`);
     }
   }
@@ -1142,14 +1142,15 @@ app.get('/api/razorpay/sync', async (req, res) => {
       razorpayFetch('/webhooks', {}, keyId, keySecret)
     ]);
 
-    const invoices = invoicesData.status === 'fulfilled' ? (invoicesData.value.items || []) : [];
-    const paymentLinks = linksData.status === 'fulfilled' ? (linksData.value.payment_links || []) : [];
-    const orders = ordersData.status === 'fulfilled' ? (ordersData.value.items || []) : [];
-    const customers = customersData.status === 'fulfilled' ? (customersData.value.items || []) : [];
-    const payments = paymentsData.status === 'fulfilled' ? (paymentsData.value.items || []) : [];
-    const subscriptions = subscriptionsData.status === 'fulfilled' ? (subscriptionsData.value.items || []) : [];
-    const webhooks = webhooksData.status === 'fulfilled' ? (webhooksData.value.items || []) : [];
+    const invoices = invoicesData.status === 'fulfilled' ? (invoicesData.value.items || invoicesData.value.invoices || []) : [];
+    const paymentLinks = linksData.status === 'fulfilled' ? (linksData.value.payment_links || linksData.value.items || []) : [];
+    const orders = ordersData.status === 'fulfilled' ? (ordersData.value.items || ordersData.value.orders || []) : [];
+    const customers = customersData.status === 'fulfilled' ? (customersData.value.items || customersData.value.customers || []) : [];
+    const payments = paymentsData.status === 'fulfilled' ? (paymentsData.value.items || paymentsData.value.payments || []) : [];
+    const subscriptions = subscriptionsData.status === 'fulfilled' ? (subscriptionsData.value.items || subscriptionsData.value.subscriptions || []) : [];
+    const webhooks = webhooksData.status === 'fulfilled' ? (webhooksData.value.items || webhooksData.value.webhooks || []) : [];
 
+    console.log(`📡 [Razorpay Sync Raw Counts] Invoices: ${invoices.length}, PaymentLinks: ${paymentLinks.length}, Subscriptions: ${subscriptions.length}, Orders: ${orders.length}, Payments: ${payments.length}`);
     // Helper to format exact date and time from Razorpay epoch
     const formatRazorpayDateTime = (epochSeconds: number) => {
       const d = new Date(epochSeconds * 1000);
@@ -1372,7 +1373,7 @@ app.get('/api/razorpay/sync', async (req, res) => {
       };
     });
 
-    // 3. Map Real Payments from Razorpay
+    // 3. Map Real Payments from Razorpay (pay_*)
     const mappedPayments = payments.map((p: any) => {
       const rawCustomerName = p.customer?.name;
       const customerName = (rawCustomerName && rawCustomerName !== 'void')
@@ -1380,47 +1381,109 @@ app.get('/api/razorpay/sync', async (req, res) => {
         : (p.email && !p.email.includes('void') ? p.email.split('@')[0] : 'Customer');
 
       const customerEmail = (p.email && !p.email.includes('void')) ? p.email : '';
+      const customerPhone = p.contact || p.customer?.contact || '';
+
+      // Linked Razorpay entities from payment object
+      const linkedOrderId = p.order_id || '';
+      const linkedInvoiceId = p.invoice_id || '';
+      const linkedSubId = p.subscription_id || p.notes?.subscription_id || '';
+      const linkedNoteCaseId = p.notes?.caseId || p.notes?.case_id || '';
+
+      // Build readable method detail (Card with network/last4, UPI VPA, Netbanking bank)
+      let methodDisplay = 'Razorpay Gateway';
+      if (p.method === 'card') {
+        const cardInfo = p.card ? `${p.card.network || ''} ${p.card.last4 ? '•••• ' + p.card.last4 : ''}`.trim() : 'Card';
+        methodDisplay = cardInfo ? `Card (${cardInfo})` : 'Credit / Debit Card';
+      } else if (p.method === 'upi') {
+        methodDisplay = p.vpa ? `UPI (${p.vpa})` : 'UPI Autopay / QR';
+      } else if (p.method === 'netbanking') {
+        methodDisplay = p.bank ? `Netbanking (${p.bank})` : 'Netbanking';
+      } else if (p.method) {
+        methodDisplay = p.method.toUpperCase();
+      }
 
       return {
         id: p.id,
         razorpayPaymentId: p.id,
+        orderId: linkedOrderId,
+        invoiceId: linkedInvoiceId,
+        subscriptionId: linkedSubId,
         customerName,
         customerEmail,
+        customerPhone,
         amount: (p.amount || 0) / 100,
-        status: p.status === 'captured' ? 'succeeded' : (p.status === 'failed' ? 'failed' : 'succeeded'),
+        status: p.status === 'captured' ? 'succeeded' : (p.status === 'failed' ? 'failed' : (p.status === 'authorized' ? 'succeeded' : 'succeeded')),
         failureReason: p.error_description || p.error_code || (p.status === 'failed' ? 'Declined by bank network' : undefined),
-        method: p.method || 'Razorpay Gateway',
+        method: methodDisplay,
+        rawMethod: p.method,
+        cardLast4: p.card?.last4,
+        cardNetwork: p.card?.network,
+        upiVpa: p.vpa,
+        bank: p.bank,
         timestamp: formatRazorpayDateTime(p.created_at),
         isoTimestamp: new Date(p.created_at * 1000).toISOString(),
         recoveredByAgent: true,
-        caseId: p.order_id || p.id
+        caseId: linkedNoteCaseId || linkedOrderId || linkedInvoiceId || p.id
       };
     });
 
-    // Deduplicate cases strictly for this account
+    // Deduplicate cases strictly by unique Razorpay Entity ID (one recovery case per real link/invoice/subscription)
     const cleanCasesMap = new Map<string, any>();
     for (const c of [...invoiceCases, ...standaloneLinkCases, ...subscriptionCases]) {
       if (c && c.id) {
-        cleanCasesMap.set(c.id, c);
+        const entityKey = c.razorpayPaymentId || c.invoiceNumber || c.id;
+        cleanCasesMap.set(entityKey, c);
       }
     }
 
-    // ─── CRITICAL: Preserve custom-built cases from the Case Builder ───────────
-    // Custom cases have IDs like RC-PAY-*, RC-SUB-*, RC-CART-* and are stored in
-    // the DB but never appear in Razorpay's /invoices or /payment_links API response
-    // because they use the Razorpay entity ID internally (razorpayPaymentId).
-    // Without this merge, every sync call erases them completely.
-    const existingDbCases = await db.getCases();
-    const CUSTOM_PREFIXES = ['RC-PAY-', 'RC-SUB-', 'RC-CART-'];
-    for (const dbCase of existingDbCases) {
-      const id = dbCase.id || '';
-      const isCustomCase = CUSTOM_PREFIXES.some(prefix => id.startsWith(prefix));
-      if (isCustomCase && !cleanCasesMap.has(id)) {
-        // Preserve the custom case exactly as it was — do NOT overwrite with invoice data
-        cleanCasesMap.set(id, dbCase);
+    // ─── MATCH PAYMENTS (pay_*) TO CORRESPONDING RECOVERY CASES (plink_*, inv_*, sub_*) ───
+    // Reconciles Razorpay pay_* payments into the corresponding case's lifecycle & timeline
+    mappedPayments.forEach((p: any) => {
+      for (const [cId, cs] of cleanCasesMap.entries()) {
+        const cEmail = (cs.customerEmail || '').toLowerCase().trim();
+        const pEmail = (p.customerEmail || '').toLowerCase().trim();
+        const rzpId = cs.razorpayPaymentId || '';
+        const invNum = cs.invoiceNumber || '';
+
+        const isExactMatch = 
+          (p.caseId && (p.caseId === cId || cId.includes(p.caseId) || p.caseId.includes(cId))) ||
+          (rzpId && (rzpId === p.id || rzpId === p.orderId || rzpId === p.invoiceId || rzpId === p.subscriptionId)) ||
+          (invNum && p.invoiceId === invNum) ||
+          (pEmail && cEmail && pEmail === cEmail && Math.abs(p.amount - cs.amount) < 1);
+
+        if (isExactMatch) {
+          if (p.status === 'succeeded') {
+            cs.status = 'Recovered';
+            cs.recoveredAmount = p.amount;
+            cs.recoveredAt = p.timestamp;
+            cs.updated = 'Payment settled';
+          }
+
+          // Inject rich timeline event from payment ledger if not already present
+          if (!cs.timeline) cs.timeline = [];
+          const eventKey = `t-pay-reconciled-${p.id}`;
+          const hasEvent = cs.timeline.some((t: any) => t.id === eventKey || t.description?.includes(p.id));
+
+          if (!hasEvent) {
+            const isSuccess = p.status === 'succeeded';
+            cs.timeline.push({
+              id: eventKey,
+              timestamp: p.isoTimestamp,
+              timeDisplay: p.timestamp,
+              title: isSuccess ? `Payment Captured (${p.id})` : `Payment Attempt Failed (${p.id})`,
+              description: isSuccess
+                ? `Razorpay confirmed capture of ₹${p.amount.toLocaleString('en-IN')} via ${p.method} (Transaction ID: ${p.id}). Revenue recovered.`
+                : `Gateway charge of ₹${p.amount.toLocaleString('en-IN')} via ${p.method} failed (${p.failureReason || 'Declined'}).`,
+              type: isSuccess ? 'success' : 'failure',
+              actionType: isSuccess ? 'Recovery' : 'Payment link'
+            });
+            // Re-sort timeline chronologically
+            cs.timeline.sort((a: any, b: any) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+          }
+        }
       }
-    }
-    // ──────────────────────────────────────────────────────────────────────────
+    });
+    // ───────────────────────────────────────────────────────────────────────────────────────
 
     const finalCleanCases = Array.from(cleanCasesMap.values());
 
@@ -1842,7 +1905,15 @@ function checkAndResetDailyBudget() {
 }
 
 function scheduleNextTrafficEvent() {
-  if (!autoTrafficConfig.isRunning) return;
+  if (!autoTrafficConfig.isRunning) {
+    if (autoTrafficConfig.timerId) {
+      clearTimeout(autoTrafficConfig.timerId);
+      autoTrafficConfig.timerId = null;
+    }
+    autoTrafficConfig.nextScheduledAt = '';
+    return;
+  }
+
   if (autoTrafficConfig.timerId) {
     clearTimeout(autoTrafficConfig.timerId);
     autoTrafficConfig.timerId = null;
@@ -1859,6 +1930,7 @@ function scheduleNextTrafficEvent() {
     autoTrafficConfig.nextScheduledAt = new Date(Date.now() + msUntilMidnight).toISOString();
     
     autoTrafficConfig.timerId = setTimeout(() => {
+      if (!autoTrafficConfig.isRunning) return;
       checkAndResetDailyBudget();
       scheduleNextTrafficEvent();
     }, msUntilMidnight);
@@ -1870,27 +1942,28 @@ function scheduleNextTrafficEvent() {
 
   autoTrafficConfig.timerId = setTimeout(async () => {
     try {
-      if (autoTrafficConfig.isRunning) {
-        checkAndResetDailyBudget();
-        if (autoTrafficConfig.generatedToday < autoTrafficConfig.targetCasesToday && autoTrafficConfig.generatedToday < autoTrafficConfig.maxDailyCases) {
-          await generateSingleLiveRazorpayCase(undefined, autoTrafficConfig.razorpayKeyId, autoTrafficConfig.razorpayKeySecret);
-          autoTrafficConfig.generatedToday++;
-          autoTrafficConfig.totalGeneratedAllTime++;
-          autoTrafficConfig.lastGeneratedAt = new Date().toISOString();
-          console.log(`🤖 [Traffic Engine] Auto-generated case ${autoTrafficConfig.generatedToday}/${autoTrafficConfig.targetCasesToday} for today.`);
+      if (!autoTrafficConfig.isRunning) {
+        return;
+      }
+      checkAndResetDailyBudget();
+      if (autoTrafficConfig.generatedToday < autoTrafficConfig.targetCasesToday && autoTrafficConfig.generatedToday < autoTrafficConfig.maxDailyCases) {
+        await generateSingleLiveRazorpayCase(undefined, autoTrafficConfig.razorpayKeyId, autoTrafficConfig.razorpayKeySecret);
+        autoTrafficConfig.generatedToday++;
+        autoTrafficConfig.totalGeneratedAllTime++;
+        autoTrafficConfig.lastGeneratedAt = new Date().toISOString();
+        console.log(`🤖 [Traffic Engine] Auto-generated case ${autoTrafficConfig.generatedToday}/${autoTrafficConfig.targetCasesToday} for today.`);
 
-          db.saveAutoTrafficState({
-            isRunning: autoTrafficConfig.isRunning,
-            maxDailyCases: autoTrafficConfig.maxDailyCases,
-            targetCasesToday: autoTrafficConfig.targetCasesToday,
-            generatedToday: autoTrafficConfig.generatedToday,
-            pacingMode: autoTrafficConfig.pacingMode,
-            currentDay: autoTrafficConfig.currentDay,
-            totalGeneratedAllTime: autoTrafficConfig.totalGeneratedAllTime,
-            lastGeneratedAt: autoTrafficConfig.lastGeneratedAt,
-            nextScheduledAt: autoTrafficConfig.nextScheduledAt
-          }).catch(() => {});
-        }
+        db.saveAutoTrafficState({
+          isRunning: autoTrafficConfig.isRunning,
+          maxDailyCases: autoTrafficConfig.maxDailyCases,
+          targetCasesToday: autoTrafficConfig.targetCasesToday,
+          generatedToday: autoTrafficConfig.generatedToday,
+          pacingMode: autoTrafficConfig.pacingMode,
+          currentDay: autoTrafficConfig.currentDay,
+          totalGeneratedAllTime: autoTrafficConfig.totalGeneratedAllTime,
+          lastGeneratedAt: autoTrafficConfig.lastGeneratedAt,
+          nextScheduledAt: autoTrafficConfig.nextScheduledAt
+        }).catch(() => {});
       }
     } catch (err: any) {
       console.warn('[Traffic Engine] Error in step execution:', err.message);

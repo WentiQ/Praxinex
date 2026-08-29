@@ -39,46 +39,65 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
   const isNeedsReview = caseItem.status === 'Needs review';
   const isAwaiting = caseItem.status === 'Awaiting payment' || caseItem.status === 'In progress';
 
+  // Extract all matching Razorpay payments (pay_*) linked to this case (plink_*, inv_*, sub_*)
+  const matchedPayments = React.useMemo(() => {
+    if (!payments || payments.length === 0 || !caseItem) return [];
+    const cEmail = (caseItem.customerEmail || '').toLowerCase().trim();
+    const cPhone = (caseItem.customerPhone || '').replace(/[^0-9]/g, '').slice(-10);
+    const cId = caseItem.id;
+    const rzpId = caseItem.razorpayPaymentId || '';
+    const invNum = caseItem.invoiceNumber || '';
+
+    return payments.filter(p => {
+      const pEmail = (p.customerEmail || '').toLowerCase().trim();
+      const pPhone = (p.customerPhone || '').replace(/[^0-9]/g, '').slice(-10);
+      const pId = p.razorpayPaymentId || p.id || '';
+      const orderId = (p as any).orderId || (p as any).order_id || '';
+      const invId = (p as any).invoiceId || (p as any).invoice_id || '';
+      const subId = (p as any).subscriptionId || (p as any).subscription_id || '';
+
+      const isExactId = 
+        (p.caseId && (cId === p.caseId || cId.includes(p.caseId) || p.caseId.includes(cId))) ||
+        (rzpId && (rzpId === pId || rzpId === orderId || rzpId === invId || rzpId === subId)) ||
+        (invNum && (invNum === invId || (p as any).description?.includes(invNum)));
+
+      const isCustomerAmountMatch = 
+        ((pEmail && cEmail && pEmail === cEmail) || (pPhone && cPhone && pPhone === cPhone)) &&
+        Math.abs(p.amount - caseItem.amount) < 2;
+
+      return isExactId || isCustomerAmountMatch;
+    });
+  }, [caseItem, payments]);
+
   // Combine caseItem.timeline with any matching live payments from Payments Ledger in real-time
   const liveTimelineEvents = React.useMemo(() => {
     const events = [...(caseItem.timeline || [])];
     const existingIds = new Set(events.map((t: any) => t.id));
 
-    if (payments && payments.length > 0) {
-      const cEmail = (caseItem.customerEmail || '').toLowerCase();
-      const cId = caseItem.id;
-      const rzpId = caseItem.razorpayPaymentId;
+    matchedPayments.forEach(p => {
+      const pId = p.razorpayPaymentId || p.id;
+      const tId = `t-pay-live-${pId}`;
+      const hasDuplicate = events.some((t: any) => t.id === tId || t.id === `t-pay-${pId}` || t.description?.includes(pId));
 
-      payments.forEach(p => {
-        const pEmail = (p.customerEmail || '').toLowerCase();
-        const pId = p.razorpayPaymentId || p.id;
-        const isMatch = (p.caseId && (cId === p.caseId || cId.includes(p.caseId) || p.caseId.includes(cId))) ||
-                        (rzpId && (rzpId === pId || rzpId === p.id)) ||
-                        (pEmail && cEmail && pEmail === cEmail);
-
-        if (isMatch) {
-          const tId = `t-pay-live-${pId}`;
-          if (!existingIds.has(tId) && !existingIds.has(`t-pay-${pId}`) && !existingIds.has(pId)) {
-            const isSuccess = p.status === 'succeeded';
-            events.push({
-              id: tId,
-              timestamp: p.isoTimestamp || (p.timestamp ? new Date(p.timestamp).toISOString() : new Date().toISOString()),
-              timeDisplay: p.timestamp || 'Just now',
-              title: isSuccess ? `Payment captured: ${formatINR(p.amount)}` : `Payment attempt failed (${p.failureReason || p.method || 'Declined'})`,
-              description: isSuccess
-                ? `Razorpay confirmed capture of ${formatINR(p.amount)} via ${p.method || 'Gateway'} (ref: ${pId}). Revenue recovered.`
-                : `Payment attempt ${pId} for ${formatINR(p.amount)} failed (${p.failureReason || 'Declined by bank network'}).`,
-              type: isSuccess ? 'success' : 'failure',
-              actionType: isSuccess ? 'Recovery' : 'Payment link'
-            });
-            existingIds.add(tId);
-          }
-        }
-      });
-    }
+      if (!hasDuplicate) {
+        const isSuccess = p.status === 'succeeded';
+        events.push({
+          id: tId,
+          timestamp: p.isoTimestamp || (p.timestamp ? new Date(p.timestamp).toISOString() : new Date().toISOString()),
+          timeDisplay: p.timestamp || 'Just now',
+          title: isSuccess ? `Payment Captured (${pId})` : `Payment Attempt Failed (${pId})`,
+          description: isSuccess
+            ? `Razorpay confirmed capture of ${formatINR(p.amount)} via ${p.method || 'Gateway'} (Transaction ID: ${pId}). Revenue recovered.`
+            : `Payment attempt ${pId} for ${formatINR(p.amount)} failed (${p.failureReason || 'Declined by bank network'}).`,
+          type: isSuccess ? 'success' : 'failure',
+          actionType: isSuccess ? 'Recovery' : 'Payment link'
+        });
+        existingIds.add(tId);
+      }
+    });
 
     return events.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
-  }, [caseItem, payments]);
+  }, [caseItem, matchedPayments]);
 
   return (
     <div 
@@ -304,6 +323,52 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 {caseItem.aiPolicyNote}
               </p>
             </div>
+
+            {/* Matched Live Razorpay Transactions (pay_*) */}
+            {matchedPayments.length > 0 && (
+              <div className="bg-white border border-[#E7E7E7] rounded-lg p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-1.5 text-xs font-semibold text-neutral-800">
+                    <CreditCard className="w-3.5 h-3.5 text-neutral-600" />
+                    <span>Linked Razorpay Transactions ({matchedPayments.length})</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-neutral-500">Live Gateway Ledger</span>
+                </div>
+
+                <div className="space-y-2">
+                  {matchedPayments.map((p) => {
+                    const isSuccess = p.status === 'succeeded';
+                    return (
+                      <div 
+                        key={p.id} 
+                        className={`p-2.5 rounded-md border text-xs flex items-center justify-between ${
+                          isSuccess ? 'bg-emerald-50/50 border-emerald-200' : 'bg-rose-50/50 border-rose-200'
+                        }`}
+                      >
+                        <div className="space-y-0.5 min-w-0 pr-2">
+                          <div className="flex items-center space-x-1.5">
+                            <span className="font-mono font-bold text-neutral-900">{p.id}</span>
+                            <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-medium ${
+                              isSuccess ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                            }`}>
+                              {isSuccess ? 'Captured' : 'Failed'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-neutral-600 truncate">
+                            {p.method} • {p.timestamp}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="font-mono font-semibold text-neutral-900 block">
+                            {formatINR(p.amount)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Action Trigger Box */}
             <div className="pt-2 space-y-2">

@@ -7,18 +7,21 @@ import {
   Clock, 
   ArrowUpRight,
   Filter,
-  Download
+  Download,
+  ExternalLink
 } from 'lucide-react';
-import { PaymentRecord } from '../types';
+import { PaymentRecord, RecoveryCase } from '../types';
 import { formatINR } from '../utils/formatters';
 
 interface PaymentsViewProps {
   payments: PaymentRecord[];
+  cases?: RecoveryCase[];
   onOpenCaseId?: (caseId: string) => void;
 }
 
 export const PaymentsView: React.FC<PaymentsViewProps> = ({
   payments,
+  cases = [],
   onOpenCaseId
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -104,14 +107,31 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                 <th className="py-3 px-4">Amount</th>
                 <th className="py-3 px-4">Method</th>
                 <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4">Failure Code</th>
+                <th className="py-3 px-4">Failure Reason</th>
                 <th className="py-3 px-4">Date</th>
-                <th className="py-3 px-5 text-right">Agent Action</th>
+                <th className="py-3 px-5 text-right">Matched Recovery Case</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F0F0F0]">
               {filteredPayments.map((p) => {
                 const isSucceeded = p.status === 'succeeded';
+                const pEmail = (p.customerEmail || '').toLowerCase().trim();
+                const pPhone = (p.customerPhone || '').replace(/[^0-9]/g, '').slice(-10);
+                const orderId = (p as any).orderId || (p as any).order_id || '';
+                const invId = (p as any).invoiceId || (p as any).invoice_id || '';
+                const subId = (p as any).subscriptionId || (p as any).subscription_id || '';
+
+                const matchedCase = cases.find(c => {
+                  const cEmail = (c.customerEmail || '').toLowerCase().trim();
+                  const cPhone = (c.customerPhone || '').replace(/[^0-9]/g, '').slice(-10);
+                  const rzpId = c.razorpayPaymentId || '';
+                  const invNum = c.invoiceNumber || '';
+
+                  return (p.caseId && (p.caseId === c.id || c.id.includes(p.caseId) || p.caseId.includes(c.id))) ||
+                         (rzpId && (rzpId === p.id || rzpId === orderId || rzpId === invId || rzpId === subId)) ||
+                         (invNum && (invNum === invId || (p as any).description?.includes(invNum))) ||
+                         (((pEmail && cEmail && pEmail === cEmail) || (pPhone && cPhone && pPhone === cPhone)) && Math.abs(p.amount - c.amount) < 2);
+                });
 
                 return (
                   <tr
@@ -121,7 +141,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                     <td className="py-3.5 px-5 font-mono text-[11px] text-neutral-700 font-medium">
                       <div className="flex items-center space-x-1.5">
                         <CreditCard className="w-3.5 h-3.5 text-neutral-400" />
-                        <span>{p.razorpayPaymentId}</span>
+                        <span className="font-bold">{p.razorpayPaymentId}</span>
                       </div>
                     </td>
 
@@ -166,13 +186,24 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                     </td>
 
                     <td className="py-3.5 px-5 text-right font-mono text-[11px]">
-                      {p.recoveredByAgent ? (
-                        <span className="text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-flex items-center">
-                          <CheckCircle2 className="w-3 h-3 mr-1" />
-                          Agent Recovered
-                        </span>
+                      {matchedCase ? (
+                        <button
+                          onClick={() => onOpenCaseId?.(matchedCase.id)}
+                          className="inline-flex items-center space-x-1 text-xs font-mono font-medium text-neutral-900 bg-neutral-100 hover:bg-neutral-200 px-2 py-1 rounded transition-colors cursor-pointer border border-neutral-300 shadow-2xs"
+                          title={`Open ${matchedCase.id} (${matchedCase.issue})`}
+                        >
+                          <span>{matchedCase.id}</span>
+                          <ExternalLink className="w-3 h-3 text-neutral-500" />
+                        </button>
+                      ) : p.caseId && p.caseId.startsWith('RC-') ? (
+                        <button
+                          onClick={() => onOpenCaseId?.(p.caseId!)}
+                          className="inline-flex items-center space-x-1 text-xs font-mono text-neutral-700 hover:text-neutral-900 underline"
+                        >
+                          <span>{p.caseId}</span>
+                        </button>
                       ) : (
-                        <span className="text-neutral-400">—</span>
+                        <span className="text-neutral-400 font-sans text-xs">Direct Gate</span>
                       )}
                     </td>
                   </tr>

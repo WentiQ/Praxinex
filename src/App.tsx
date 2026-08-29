@@ -271,21 +271,10 @@ export default function App() {
         const newPayments = Array.isArray(realPayments) ? realPayments : [];
         const newActivities = Array.isArray(realActivities) ? realActivities : [];
 
-        // Merge: preserve any custom-built cases (RC-PAY-*, RC-SUB-*, RC-CART-*) from
-        // current state that aren't in the sync result yet — guards against race condition
-        // where onSync fires before Supabase persistence of the newly created case completes.
-        const CUSTOM_PREFIXES = ['RC-PAY-', 'RC-SUB-', 'RC-CART-'];
-        const syncedIds = new Set(syncedCases.map((c: any) => c.id));
-        setCases(prev => {
-          const preserved = prev.filter(c =>
-            CUSTOM_PREFIXES.some(p => c.id?.startsWith(p)) && !syncedIds.has(c.id)
-          );
-          const merged = [...preserved, ...syncedCases];
-          try {
-            localStorage.setItem('recovery_cases_cache', JSON.stringify(merged));
-          } catch {}
-          return merged;
-        });
+        setCases(syncedCases);
+        try {
+          localStorage.setItem('recovery_cases_cache', JSON.stringify(syncedCases));
+        } catch {}
 
         setSyncedCustomers(newCustomers);
         setPayments(newPayments);

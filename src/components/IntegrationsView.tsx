@@ -1,34 +1,46 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  CreditCard, 
   Sparkles, 
   CheckCircle2, 
   ExternalLink, 
   RefreshCw, 
-  Key, 
   ShieldCheck, 
-  Globe, 
   Mail, 
-  Lock,
-  Layers,
   Edit2,
   Check,
-  Radio,
   Activity,
   Send,
   Copy,
   Database,
-  User,
-  KeyRound
+  User
 } from 'lucide-react';
 import { MerchantProfile } from '../types';
+
+type AuthUser = {
+  email?: string | null;
+};
+
+type WebhookEvent = {
+  id: string;
+  event: string;
+  timestamp: string;
+  entityId?: string;
+  customer?: string;
+  status: 'processed' | 'ignored' | 'failed';
+};
+
+type WebhookStatus = {
+  success: boolean;
+  eventCount?: number;
+  events?: WebhookEvent[];
+};
 
 interface IntegrationsViewProps {
   merchant: MerchantProfile;
   onUpdateMerchant: (updated: MerchantProfile) => void;
   onSyncRazorpay?: (isReset?: boolean, customKeyId?: string, customKeySecret?: string) => Promise<void>;
   isSyncing?: boolean;
-  user?: any | null;
+  user?: AuthUser | null;
   onOpenAuth?: () => void;
 }
 
@@ -46,7 +58,7 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({
   const [aiTestResult, setAiTestResult] = useState<string | null>(null);
 
   // Webhook inspector states
-  const [webhookStatus, setWebhookStatus] = useState<any>(null);
+  const [webhookStatus, setWebhookStatus] = useState<WebhookStatus | null>(null);
   const [isSendingWebhookTest, setIsSendingWebhookTest] = useState<boolean>(false);
   const [webhookTestMessage, setWebhookTestMessage] = useState<string | null>(null);
   const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
@@ -71,7 +83,7 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({
   const fetchWebhookStatus = async () => {
     try {
       const res = await fetch('/api/razorpay/webhook/status');
-      const data = await res.json();
+      const data = await res.json() as WebhookStatus;
       if (data.success) {
         setWebhookStatus(data);
       }
@@ -131,7 +143,15 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({
           merchantCustomKey: geminiKey || merchant.geminiApiKey
         })
       });
-      const data = await response.json();
+      const data = await response.json() as {
+        success?: boolean;
+        diagnosis?: {
+          recommendedAction: string;
+          recoveryProbability: number;
+          reason: string;
+        };
+        source?: string;
+      };
       if (data.success && data.diagnosis) {
         setAiTestResult(`✓ AI Diagnostic Result (${data.source || 'gemini-3.7-flash'}): Recommended "${data.diagnosis.recommendedAction}" (Probability: ${data.diagnosis.recoveryProbability}%) — ${data.diagnosis.reason}`);
       } else {
@@ -158,14 +178,15 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({
           customerEmail: eventType === 'payment.failed' ? 'siddharth.v@techcorp.in' : 'dineshpolavarapu66@gmail.com'
         })
       });
-      const data = await res.json();
+      const data = await res.json() as { success?: boolean };
       if (data.success) {
         setWebhookTestMessage(`✓ Webhook [${eventType}] successfully ingested & processed! Check Activity & Cases tab.`);
         fetchWebhookStatus();
         if (onSyncRazorpay) onSyncRazorpay();
       }
-    } catch (e: any) {
-      setWebhookTestMessage(`Error sending test webhook: ${e.message}`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      setWebhookTestMessage(`Error sending test webhook: ${message}`);
     } finally {
       setIsSendingWebhookTest(false);
     }
@@ -511,7 +532,7 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-neutral-100 bg-white">
-                      {webhookStatus.events.map((evt: any) => (
+                      {webhookStatus.events.map((evt) => (
                         <tr key={evt.id} className="hover:bg-neutral-50">
                           <td className="p-2 font-bold text-neutral-900">{evt.event}</td>
                           <td className="p-2 text-neutral-600">{evt.entityId || 'N/A'}</td>
@@ -640,4 +661,3 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({
     </div>
   );
 };
-

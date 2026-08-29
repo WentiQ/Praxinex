@@ -28,6 +28,7 @@ export interface TimelineEvent {
   title: string;
   description: string;
   type: 'failure' | 'detection' | 'diagnosis' | 'action' | 'success' | 'escalation';
+  actionType?: string;
 }
 
 export interface RecoveryCase {
@@ -110,6 +111,7 @@ export interface PaymentRecord {
   razorpayPaymentId: string;
   customerName: string;
   customerEmail: string;
+  customerPhone?: string;
   amount: number;
   status: 'succeeded' | 'failed' | 'refunded' | 'captured';
   failureReason?: string;
@@ -117,6 +119,9 @@ export interface PaymentRecord {
   timestamp: string;
   recoveredByAgent: boolean;
   caseId?: string;
+  orderId?: string;
+  invoiceId?: string;
+  subscriptionId?: string;
   isoTimestamp?: string;
 }
 
