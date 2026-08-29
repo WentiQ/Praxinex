@@ -117,6 +117,7 @@ export interface PaymentRecord {
   timestamp: string;
   recoveredByAgent: boolean;
   caseId?: string;
+  isoTimestamp?: string;
 }
 
 export interface CustomerRecord {
@@ -147,7 +148,7 @@ export type ActiveTab =
 
 export interface PraxinexAction {
   id: string;
-  type: 'generate_payment_link' | 'navigate' | 'open_case' | 'sync_data' | 'escalate_case' | 'retry_charge';
+  type: 'generate_payment_link' | 'navigate' | 'open_case' | 'sync_data' | 'escalate_case' | 'retry_charge' | 'retry_payment' | 'send_reminder' | 'escalate';
   label: string;
   payload?: any;
   status?: 'pending' | 'executed' | 'failed';

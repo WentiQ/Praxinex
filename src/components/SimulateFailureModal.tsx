@@ -14,7 +14,8 @@ import {
   ExternalLink,
   Loader2,
   Sliders,
-  ShieldCheck
+  ShieldCheck,
+  RefreshCw
 } from 'lucide-react';
 import { RecoveryCase, IssueType, MerchantProfile } from '../types';
 import firstNames from '../../data/first_names.json';
@@ -30,6 +31,18 @@ const getRandomDatasetCustomer = () => {
     phone: `+9198${Math.floor(10000000 + Math.random() * 89999999)}`
   };
 };
+
+interface RazorpayPlan {
+  id: string;
+  name: string;
+  description: string;
+  amount: number;       // paise
+  amountINR: number;    // rupees
+  currency: string;
+  period: string;
+  interval: number;
+  periodLabel: string;
+}
 
 interface SimulateFailureModalProps {
   isOpen: boolean;
@@ -55,10 +68,90 @@ export const SimulateFailureModal: React.FC<SimulateFailureModalProps> = ({
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [companyName, setCompanyName] = useState('');
-  const [amount, setAmount] = useState<number>(14500);
-  const [issue, setIssue] = useState<IssueType>('Checkout abandoned');
-  const [failureReason, setFailureReason] = useState('Customer added to cart and clicked checkout, but exited before completing payment');
-  const [paymentMethod, setPaymentMethod] = useState('Razorpay Gateway');
+  const [amount, setAmount] = useState<number>(18500);
+  const [issue, setIssue] = useState<IssueType>('Payment failed');
+  const [failureReason, setFailureReason] = useState('Bank switch network timeout during 3DS OTP authorization');
+  const [paymentMethod, setPaymentMethod] = useState('Razorpay Gateway (UPI / Cards / Netbanking)');
+
+  // Razorpay Subscription Plans
+  const [razorpayPlans, setRazorpayPlans] = useState<RazorpayPlan[]>([]);
+  const [selectedPlanId, setSelectedPlanId] = useState<string>('');
+  const [isLoadingPlans, setIsLoadingPlans] = useState(false);
+  const [plansError, setPlansError] = useState<string>('');
+
+  const fetchRazorpayPlans = async () => {
+    setIsLoadingPlans(true);
+    setPlansError('');
+    try {
+      const kId = merchant?.razorpayKeyId || '';
+      const kSec = merchant?.razorpayKeySecret || '';
+      const params = new URLSearchParams();
+      if (kId) params.append('keyId', kId);
+      if (kSec) params.append('keySecret', kSec);
+
+      const res = await fetch(`/api/razorpay/plans?${params.toString()}`);
+      if (!res.ok) {
+        throw new Error(`Server returned HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      if (data?.success && Array.isArray(data.plans) && data.plans.length > 0) {
+        setRazorpayPlans(data.plans);
+        // Auto-select first plan and set amount
+        const first = data.plans[0];
+        setSelectedPlanId(first.id);
+        setAmount(first.amountINR);
+        setPlansError('');
+      } else if (data?.success && Array.isArray(data.plans) && data.plans.length === 0) {
+        setRazorpayPlans([]);
+        setPlansError('No subscription plans found in your Razorpay account. Create one at dashboard.razorpay.com/app/subscriptions/plans');
+      } else {
+        setRazorpayPlans([]);
+        setPlansError(data?.error || 'Could not load plans from Razorpay');
+      }
+    } catch (err: any) {
+      console.warn('Plan fetch error:', err);
+      setRazorpayPlans([]);
+      setPlansError('Failed to connect to Razorpay plans API. Please verify server status.');
+    } finally {
+      setIsLoadingPlans(false);
+    }
+  };
+
+  const handleIssueChange = (newIssue: IssueType) => {
+    setIssue(newIssue);
+    if (newIssue === 'Subscription lapsed') {
+      setFailureReason('Recurring auto-debit charge rejected by bank (e-mandate / card expired)');
+      setPaymentMethod('Razorpay Recurring Autopay (e-Mandate / Cards)');
+      // Fetch real plans from Razorpay — amount will be set from selected plan
+      fetchRazorpayPlans();
+    } else if (newIssue === 'Invoice overdue') {
+      setFailureReason('Net-30 corporate invoice overdue past scheduled settlement window');
+      setPaymentMethod('Razorpay Invoice Portal');
+      setAmount(85000);
+      setRazorpayPlans([]);
+      setSelectedPlanId('');
+    } else if (newIssue === 'Checkout abandoned') {
+      setFailureReason('Customer initiated cart checkout but exited before completing 3DS authorization');
+      setPaymentMethod('Razorpay Dynamic Rail');
+      setAmount(24500);
+      setRazorpayPlans([]);
+      setSelectedPlanId('');
+    } else {
+      setFailureReason('Bank switch network timeout during 3DS OTP authorization');
+      setPaymentMethod('Razorpay Gateway (UPI / Cards / Netbanking)');
+      setAmount(18500);
+      setRazorpayPlans([]);
+      setSelectedPlanId('');
+    }
+  };
+
+  const handlePlanSelect = (planId: string) => {
+    setSelectedPlanId(planId);
+    const plan = razorpayPlans.find(p => p.id === planId);
+    if (plan) {
+      setAmount(plan.amountINR);
+    }
+  };
 
   const randomizeCustomCustomer = () => {
     const p = getRandomDatasetCustomer();
@@ -127,7 +220,8 @@ export const SimulateFailureModal: React.FC<SimulateFailureModalProps> = ({
       if (data.success && data.case) {
         setLastCreatedCase(data.case);
         onAddCase(data.case);
-        if (onSync) onSync();
+        // NOTE: Do NOT call onSync() here — it would overwrite the newly added case
+        // before Supabase persistence completes. The 30s heartbeat will sync it later.
       }
     } catch (err) {
       console.error('Failed to generate live Razorpay simulation:', err);
@@ -150,7 +244,8 @@ export const SimulateFailureModal: React.FC<SimulateFailureModalProps> = ({
         amount: Number(amount) || 5000,
         issue,
         failureReason,
-        paymentMethod
+        paymentMethod,
+        planId: issue === 'Subscription lapsed' ? selectedPlanId : undefined
       };
 
       const res = await fetch('/api/simulate/traffic', {
@@ -166,7 +261,8 @@ export const SimulateFailureModal: React.FC<SimulateFailureModalProps> = ({
       if (data.success && data.case) {
         setLastCreatedCase(data.case);
         onAddCase(data.case);
-        if (onSync) onSync();
+        // NOTE: Do NOT call onSync() here — it would overwrite the newly added case
+        // before Supabase persistence completes. The 30s heartbeat will sync it later.
       }
     } catch (err) {
       console.error('Failed to create custom simulation:', err);
@@ -295,73 +391,78 @@ export const SimulateFailureModal: React.FC<SimulateFailureModalProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <button
-                  onClick={() => handleQuickGenerate()}
-                  disabled={isGenerating}
-                  className="p-4 border border-neutral-200 hover:border-neutral-900 rounded-xl text-left transition-all hover:shadow-xs bg-white hover:bg-neutral-50/50 group cursor-pointer"
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-semibold text-xs text-neutral-900 group-hover:text-black">⚡ Dynamic Checkout (2500×2500)</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-neutral-100 rounded text-neutral-600">Auto Pick</span>
-                  </div>
-                  <p className="text-[11px] text-neutral-500">
-                    Random customer from dataset, amount in multiples of 10 up to ₹10L, 1st Payment Link created & tracked.
-                  </p>
-                </button>
-
-                <button
                   onClick={() => handleQuickGenerate({
-                    issue: 'Checkout abandoned',
-                    amount: 14500,
-                    failureReason: 'Customer added to cart and clicked checkout, but exited before completing payment',
-                    product: 'Cloud Logistics Engine Monthly'
-                  })}
-                  disabled={isGenerating}
-                  className="p-4 border border-neutral-200 hover:border-neutral-900 rounded-xl text-left transition-all hover:shadow-xs bg-white hover:bg-neutral-50/50 group cursor-pointer"
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-semibold text-xs text-neutral-900">🛒 Cart Abandoned (₹14,500)</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded">1st Link Active</span>
-                  </div>
-                  <p className="text-[11px] text-neutral-500">
-                    Checkout initiated $\rightarrow$ 1st link created $\rightarrow$ drop-off detected $\rightarrow$ AI recovery dispatched.
-                  </p>
-                </button>
-
-                <button
-                  onClick={() => handleQuickGenerate({
-                    amount: 48000,
                     issue: 'Payment failed',
+                    amount: 18500,
                     failureReason: 'Bank switch network timeout during 3DS OTP authorization',
-                    product: 'Analytics Enterprise Platform Q3'
+                    product: 'Enterprise API Gateway'
                   })}
                   disabled={isGenerating}
                   className="p-4 border border-neutral-200 hover:border-neutral-900 rounded-xl text-left transition-all hover:shadow-xs bg-white hover:bg-neutral-50/50 group cursor-pointer"
                 >
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-semibold text-xs text-neutral-900">💳 Mid-Tier Ticket (₹48,000)</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded">Card Timeout</span>
+                    <span className="font-semibold text-xs text-neutral-900 group-hover:text-black">💳 Payment Failed (₹18,500)</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded">Card/UPI Timeout</span>
                   </div>
                   <p className="text-[11px] text-neutral-500">
-                    Mid-ticket transaction failure with automated 1-click retry payment link dispatch.
+                    Standard transaction failure with automated 1-click retry payment link dispatch.
                   </p>
                 </button>
 
                 <button
                   onClick={() => handleQuickGenerate({
-                    amount: 350000,
-                    issue: 'Checkout abandoned',
-                    failureReason: 'High-value enterprise procurement checkout pending corporate sign-off',
-                    product: 'Autonomous AI Enterprise Cluster'
+                    issue: 'Invoice overdue',
+                    amount: 85000,
+                    failureReason: 'Net-30 corporate invoice overdue past scheduled settlement window',
+                    product: 'Autonomous Cluster Annual License'
                   })}
                   disabled={isGenerating}
                   className="p-4 border border-neutral-200 hover:border-neutral-900 rounded-xl text-left transition-all hover:shadow-xs bg-white hover:bg-neutral-50/50 group cursor-pointer"
                 >
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-semibold text-xs text-neutral-900">🏢 High-Ticket (₹3,50,000)</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded">VIP Review</span>
+                    <span className="font-semibold text-xs text-neutral-900">📄 Invoice Overdue (₹85,000)</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded">B2B Net-30</span>
                   </div>
                   <p className="text-[11px] text-neutral-500">
-                    High-ticket multiple of 10 (up to ₹10 Lakhs). AI priority recovery workflow.
+                    Overdue milestone invoice on Razorpay with automated invoice settlement link.
+                  </p>
+                </button>
+
+                <button
+                  onClick={() => handleQuickGenerate({
+                    amount: 12000,
+                    issue: 'Subscription lapsed',
+                    failureReason: 'Recurring auto-debit charge rejected by bank (e-mandate / card expired)',
+                    product: 'SaaS Platform Pro Monthly'
+                  })}
+                  disabled={isGenerating}
+                  className="p-4 border border-neutral-200 hover:border-neutral-900 rounded-xl text-left transition-all hover:shadow-xs bg-white hover:bg-neutral-50/50 group cursor-pointer"
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-semibold text-xs text-neutral-900">🔄 Subscription Lapsed (₹12,000)</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded">Autopay Failed</span>
+                  </div>
+                  <p className="text-[11px] text-neutral-500">
+                    Recurring auto-debit mandate dropped. 1-click update link dispatched.
+                  </p>
+                </button>
+
+                <button
+                  onClick={() => handleQuickGenerate({
+                    amount: 24500,
+                    issue: 'Checkout abandoned',
+                    failureReason: 'Customer initiated cart checkout but exited before completing 3DS authorization',
+                    product: 'Cloud Compute Instance Monthly'
+                  })}
+                  disabled={isGenerating}
+                  className="p-4 border border-neutral-200 hover:border-neutral-900 rounded-xl text-left transition-all hover:shadow-xs bg-white hover:bg-neutral-50/50 group cursor-pointer"
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-semibold text-xs text-neutral-900">🛒 Cart Abandoned (₹24,500)</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded">Drop-off</span>
+                  </div>
+                  <p className="text-[11px] text-neutral-500">
+                    Checkout initiated $\rightarrow$ drop-off detected $\rightarrow$ AI recovery dispatched.
                   </p>
                 </button>
               </div>
@@ -547,30 +648,85 @@ export const SimulateFailureModal: React.FC<SimulateFailureModalProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-semibold text-neutral-800 block mb-1">Amount at Risk (₹)</label>
-                  <input
-                    type="number"
-                    required
-                    min={100}
-                    value={amount}
-                    onChange={(e) => setAmount(Number(e.target.value))}
-                    className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 font-mono text-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                  />
-                </div>
-
-                <div>
                   <label className="font-semibold text-neutral-800 block mb-1">Issue Category</label>
                   <select
                     value={issue}
-                    onChange={(e) => setIssue(e.target.value as IssueType)}
-                    className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900"
+                    onChange={(e) => handleIssueChange(e.target.value as IssueType)}
+                    className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-neutral-900 font-medium focus:outline-none focus:ring-1 focus:ring-neutral-900"
                   >
-                    <option value="Payment failed">Payment failed (Card / UPI / Netbanking)</option>
-                    <option value="Invoice overdue">Invoice overdue (Net-30 / Milestone)</option>
-                    <option value="Payment link active">Payment link active (Checkout pending)</option>
+                    <option value="Payment failed">💳 Payment failed (Card / UPI / Netbanking)</option>
+                    <option value="Invoice overdue">📄 Invoice overdue (B2B Net-30 / Milestone)</option>
+                    <option value="Subscription lapsed">🔄 Subscription lapsed (Recurring Autopay)</option>
+                    <option value="Checkout abandoned">🛒 Checkout abandoned (Cart drop-off)</option>
                   </select>
                 </div>
+
+                <div>
+                  {issue === 'Subscription lapsed' ? (
+                    <>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="font-semibold text-neutral-800">Razorpay Plan</label>
+                        <button
+                          type="button"
+                          onClick={fetchRazorpayPlans}
+                          disabled={isLoadingPlans}
+                          className="flex items-center gap-1 text-[10px] text-neutral-500 hover:text-neutral-800 transition-colors"
+                          title="Reload plans from Razorpay"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${isLoadingPlans ? 'animate-spin' : ''}`} />
+                          Reload
+                        </button>
+                      </div>
+                      {isLoadingPlans ? (
+                        <div className="w-full flex items-center gap-2 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-neutral-500 text-sm">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <span>Fetching plans from Razorpay...</span>
+                        </div>
+                      ) : plansError ? (
+                        <div className="w-full bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-amber-700 text-[11px]">
+                          {plansError}
+                        </div>
+                      ) : razorpayPlans.length > 0 ? (
+                        <select
+                          value={selectedPlanId}
+                          onChange={(e) => handlePlanSelect(e.target.value)}
+                          className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-neutral-900 font-medium focus:outline-none focus:ring-1 focus:ring-neutral-900"
+                        >
+                          {razorpayPlans.map(plan => (
+                            <option key={plan.id} value={plan.id}>
+                              {plan.name} — ₹{plan.amountINR.toLocaleString('en-IN')}/{plan.periodLabel}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-neutral-400 text-sm italic">
+                          Select issue to load plans
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <label className="font-semibold text-neutral-800 block mb-1">Amount at Risk (₹)</label>
+                      <input
+                        type="number"
+                        required
+                        min={100}
+                        value={amount}
+                        onChange={(e) => setAmount(Number(e.target.value))}
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 font-mono text-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900"
+                      />
+                    </>
+                  )}
+                </div>
               </div>
+
+              {/* Show amount read-only when plan selected */}
+              {issue === 'Subscription lapsed' && razorpayPlans.length > 0 && (
+                <div className="flex items-center gap-2 text-xs bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-emerald-800">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Plan amount auto-filled: <strong>₹{amount.toLocaleString('en-IN')}</strong> — this is the exact amount charged by Razorpay for this plan.</span>
+                </div>
+              )}
 
               <div>
                 <label className="font-semibold text-neutral-800 block mb-1">Failure Reason / Context</label>
@@ -630,7 +786,7 @@ export const SimulateFailureModal: React.FC<SimulateFailureModalProps> = ({
                     rel="noreferrer"
                     className="inline-flex items-center space-x-1 text-xs font-mono font-medium text-blue-700 bg-white border border-blue-200 px-2.5 py-1 rounded hover:bg-blue-50 transition-colors"
                   >
-                    <span>View Razorpay Link</span>
+                    <span>Open Official Link</span>
                     <ExternalLink className="w-3 h-3 ml-0.5" />
                   </a>
                   <span className="text-[11px] text-neutral-500 font-mono">

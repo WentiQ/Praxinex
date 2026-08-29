@@ -7,7 +7,8 @@ import {
   X,
   CreditCard,
   Send,
-  AlertTriangle
+  AlertTriangle,
+  ExternalLink
 } from 'lucide-react';
 import { RecoveryCase } from '../types';
 import { formatINR } from '../utils/formatters';
@@ -96,9 +97,8 @@ export const ActionExecutionModal: React.FC<ActionExecutionModalProps> = ({
   if (!isOpen || !caseItem) return null;
 
   const actionName = caseItem.recommendedAction;
-  const isRetry = actionName === 'Retry payment';
-  const isLink = actionName === 'Payment link';
   const isEscalate = actionName === 'Escalate';
+  const isLinkOrRetry = actionName === 'Payment link' || actionName === 'Retry payment' || actionName === 'Schedule retry' || actionName === 'Send reminder';
 
   const liveLinkUrl = actionResult?.paymentLinkUrl || caseItem.paymentLinkUrl;
   const livePaymentId = actionResult?.simulatedPaymentId || caseItem.razorpayPaymentId;
@@ -107,19 +107,16 @@ export const ActionExecutionModal: React.FC<ActionExecutionModalProps> = ({
     { title: 'Checking payment status...', detail: `Verified ${caseItem.paymentMethod || 'Razorpay Gateway'}` },
     { title: 'Validating recovery policy...', detail: `Compliant with autonomous policy limit (Attempt ${caseItem.attemptCount} of ${caseItem.maxAttempts})` },
     { 
-      title: isRetry ? 'Executing retry...' : isLink ? 'Generating Razorpay payment link...' : 'Routing to finance queue...',
-      detail: isRetry 
-        ? 'Dispatched /v1/payments/retry to Razorpay engine' 
-        : liveLinkUrl ? `Created live short link: ${liveLinkUrl}` : 'Generated multi-rail payment payload' 
+      title: isEscalate ? 'Routing to finance queue...' : 'Generating Razorpay payment link...',
+      detail: isEscalate ? 'Applied stopping rule bounds' : liveLinkUrl ? `Created live short link: ${liveLinkUrl}` : 'Generated multi-rail payment link'
     },
     { 
-      title: isRetry ? 'Confirming payment...' : isLink ? 'Dispatching customer communication...' : 'Updating case status...',
-      detail: 'Verified and registered with Razorpay Webhook TTWXpg6OFXSym0' 
+      title: isEscalate ? 'Updating case status...' : 'Dispatching customer communication...',
+      detail: isEscalate ? 'Assigned to finance team' : `Sent recovery link to ${caseItem.customerEmail || caseItem.customerPhone || 'customer'}`
     },
   ];
 
   const handleFinish = () => {
-    const isSuccess = !isEscalate;
     const now = new Date();
     const timeDisplay = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -129,40 +126,27 @@ export const ActionExecutionModal: React.FC<ActionExecutionModalProps> = ({
         id: `t-exec-${Date.now()}`,
         timestamp: now.toISOString(),
         timeDisplay,
-        title: isRetry ? 'Payment succeeded' : isLink ? 'Payment link sent' : 'Case escalated',
-        description: isRetry 
-          ? `Razorpay confirmed capture of ${formatINR(caseItem.amount)} (ID: ${livePaymentId}).`
-          : isLink
-          ? `Dispatched secure 1-click payment link to ${caseItem.customerEmail} (${liveLinkUrl || 'rzp.io'}).`
-          : `Stopping rule triggered. Assigned to finance operations.`,
-        type: (isRetry ? 'success' : isLink ? 'action' : 'escalation') as any
+        title: isEscalate ? 'Case escalated' : 'Payment link generated & dispatched',
+        description: isEscalate
+          ? `Stopping rule triggered. Assigned to finance operations.`
+          : `Dispatched live Razorpay payment link (${livePaymentId}): ${liveLinkUrl || 'https://rzp.io/rzp/WT6797L'} to ${caseItem.customerEmail || caseItem.customerName}.`,
+        type: (isEscalate ? 'escalation' : 'action') as any,
+        actionType: 'Payment link'
       }
     ];
 
-    if (isRetry) {
-      newTimelineEvents.push({
-        id: `t-rec-${Date.now() + 1}`,
-        timestamp: now.toISOString(),
-        timeDisplay,
-        title: `${formatINR(caseItem.amount)} recovered`,
-        description: `Case marked as Recovered. Transaction ${livePaymentId} captured.`,
-        type: 'success'
-      });
-    }
-
     const updatedCase: RecoveryCase = {
       ...caseItem,
-      status: isRetry ? 'Recovered' : isLink ? 'Awaiting payment' : 'Needs review',
+      status: isEscalate ? 'Needs review' : 'Awaiting payment',
+      recommendedAction: isEscalate ? 'Escalate' : 'Payment link',
       updated: 'Just now',
       attemptCount: caseItem.attemptCount + 1,
-      recoveredAmount: isRetry ? caseItem.amount : undefined,
-      recoveredAt: isRetry ? timeDisplay : undefined,
       paymentLinkUrl: liveLinkUrl,
       razorpayPaymentId: livePaymentId,
       timeline: newTimelineEvents
     };
 
-    onComplete(updatedCase, isRetry ? caseItem.amount : 0);
+    onComplete(updatedCase, 0);
     onClose();
   };
 
@@ -182,7 +166,7 @@ export const ActionExecutionModal: React.FC<ActionExecutionModalProps> = ({
               Autonomous Execution
             </span>
             <h3 className="text-base font-bold text-[#171717] mt-0.5">
-              {isRetry ? 'Retrying payment' : isLink ? 'Generating payment link' : 'Executing recovery action'}
+              {isEscalate ? 'Escalating case' : 'Generating & dispatching payment link'}
             </h3>
           </div>
           <div className="text-right">
@@ -241,16 +225,38 @@ export const ActionExecutionModal: React.FC<ActionExecutionModalProps> = ({
 
           {/* Final Outcome State */}
           {isDone && (
-            <div className="mt-4 p-4 rounded-lg bg-emerald-50 border border-emerald-200 text-center animate-fade-in space-y-1">
-              <span className="text-xs text-emerald-700 font-mono block">
-                Operation Complete
-              </span>
-              <span className="text-lg font-bold text-emerald-900 font-mono block">
-                {isRetry ? `✓ ${formatINR(caseItem.amount)} recovered` : '✓ Recovery action dispatched'}
-              </span>
-              <span className="text-xs text-emerald-700 block">
-                Transaction settled & audit log recorded
-              </span>
+            <div className="mt-4 p-4 rounded-lg bg-emerald-50 border border-emerald-200 animate-fade-in space-y-2.5">
+              <div className="text-center">
+                <span className="text-xs text-emerald-700 font-mono block font-semibold">
+                  ✓ Operation Complete
+                </span>
+                <span className="text-base font-bold text-emerald-900 font-mono block mt-0.5">
+                  {isEscalate ? 'Case Escalated to Finance' : 'Payment Link Active & Dispatched'}
+                </span>
+                <span className="text-xs text-emerald-700 block mt-0.5">
+                  {isEscalate ? 'Assigned to finance queue' : 'Awaiting customer payment'}
+                </span>
+              </div>
+
+              {liveLinkUrl && !isEscalate && (
+                <div className="pt-2 border-t border-emerald-200/80 flex items-center justify-between gap-2 bg-white/70 p-2.5 rounded-md">
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[10px] uppercase font-bold text-blue-700 font-mono block">
+                      {liveLinkUrl.includes('invoices.razorpay.com') ? 'Razorpay Invoice Link' : 'Razorpay Live Link'}
+                    </span>
+                    <span className="text-xs font-mono text-neutral-800 truncate block">{liveLinkUrl}</span>
+                  </div>
+                  <a
+                    href={liveLinkUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center space-x-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium shrink-0 transition-colors shadow-2xs"
+                  >
+                    <span>Open Link</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
             </div>
           )}
         </div>

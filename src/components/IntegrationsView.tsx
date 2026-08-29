@@ -26,7 +26,7 @@ import { MerchantProfile } from '../types';
 interface IntegrationsViewProps {
   merchant: MerchantProfile;
   onUpdateMerchant: (updated: MerchantProfile) => void;
-  onSyncRazorpay?: () => Promise<void>;
+  onSyncRazorpay?: (isReset?: boolean, customKeyId?: string, customKeySecret?: string) => Promise<void>;
   isSyncing?: boolean;
   user?: any | null;
   onOpenAuth?: () => void;
@@ -51,21 +51,31 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({
   const [webhookTestMessage, setWebhookTestMessage] = useState<string | null>(null);
   const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
 
-  // Form states
-  const [rzpKeyId, setRzpKeyId] = useState(merchant.razorpayKeyId);
-  const [rzpKeySecret, setRzpKeySecret] = useState(merchant.razorpayKeySecret);
-  const [isTestMode, setIsTestMode] = useState(merchant.isTestMode);
-  const [geminiKey, setGeminiKey] = useState(merchant.geminiApiKey);
+  // Razorpay Local Form State
+  const [rzpKeyId, setRzpKeyId] = useState<string>(merchant.razorpayKeyId || '');
+  const [rzpKeySecret, setRzpKeySecret] = useState<string>(merchant.razorpayKeySecret || '');
+  const [isTestMode, setIsTestMode] = useState<boolean>(merchant.isTestMode !== false);
+
+  // Gemini Local Form State
+  const [geminiKey, setGeminiKey] = useState<string>(merchant.geminiApiKey || '');
+
+  // Keep local form in sync if merchant prop changes
+  useEffect(() => {
+    setRzpKeyId(merchant.razorpayKeyId || '');
+    setRzpKeySecret(merchant.razorpayKeySecret || '');
+    setIsTestMode(merchant.isTestMode !== false);
+    setGeminiKey(merchant.geminiApiKey || '');
+  }, [merchant.razorpayKeyId, merchant.razorpayKeySecret, merchant.isTestMode, merchant.geminiApiKey]);
 
   // Fetch webhook logs
   const fetchWebhookStatus = async () => {
     try {
       const res = await fetch('/api/razorpay/webhook/status');
       const data = await res.json();
-      setWebhookStatus(data);
-    } catch (err) {
-      console.error('Failed to load webhook status:', err);
-    }
+      if (data.success) {
+        setWebhookStatus(data);
+      }
+    } catch {}
   };
 
   useEffect(() => {
@@ -74,16 +84,22 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  const handleSaveRazorpay = () => {
-    onUpdateMerchant({
+  const handleSaveRazorpay = async () => {
+    const cleanKeyId = rzpKeyId.trim();
+    const cleanSecret = rzpKeySecret.trim();
+    const updated: MerchantProfile = {
       ...merchant,
-      razorpayKeyId: rzpKeyId,
-      razorpayKeySecret: rzpKeySecret,
+      razorpayKeyId: cleanKeyId,
+      razorpayKeySecret: cleanSecret,
       isTestMode: isTestMode,
       razorpayConnected: true,
       lastSyncedAt: 'Just now'
-    });
+    };
+    onUpdateMerchant(updated);
     setIsEditingRazorpay(false);
+    if (onSyncRazorpay) {
+      await onSyncRazorpay(true, cleanKeyId, cleanSecret);
+    }
   };
 
   const handleSaveGemini = () => {

@@ -310,7 +310,9 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
               {caseItem.paymentLinkUrl && (
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
                   <div className="min-w-0 pr-2">
-                    <span className="text-[10px] font-mono text-blue-700 block uppercase font-bold">Razorpay Live Link</span>
+                    <span className="text-[10px] font-mono text-blue-700 block uppercase font-bold">
+                      {caseItem.paymentLinkUrl.includes('invoices.razorpay.com') ? 'Razorpay Invoice Link' : 'Razorpay Live Link'}
+                    </span>
                     <span className="text-xs font-mono text-blue-900 truncate block">{caseItem.paymentLinkUrl}</span>
                   </div>
                   <a
@@ -319,7 +321,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                     rel="noreferrer"
                     className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium shrink-0 transition-colors shadow-2xs"
                   >
-                    <span>Open</span>
+                    <span>Open Link</span>
                     <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Sidebar, NavigationTab } from './components/Sidebar';
 import { Header } from './components/Header';
 import { OverviewView } from './components/OverviewView';
@@ -177,7 +177,7 @@ export default function App() {
         existing.failedTransactions += 1;
         existing.lifetimeValue += caseAmount;
         if (cs.risk === 'High') existing.riskCategory = 'High Risk';
-        else if (cs.risk === 'Medium' && existing.riskCategory !== 'High Risk') existing.riskCategory = 'Medium Risk';
+        else if (cs.risk === 'Medium' && existing.riskCategory !== 'High Risk') existing.riskCategory = 'Moderate';
       }
 
       existing.lastSeen = cs.updated || 'Just now';
@@ -244,111 +244,125 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Stable reference to latest merchant without causing re-render loops
+  const merchantRef = useRef<MerchantProfile>(merchant);
+  useEffect(() => {
+    merchantRef.current = merchant;
+  }, [merchant]);
+
   // Live Razorpay Sync Function
-  const syncLiveRazorpayData = useCallback(async (quiet = false) => {
-    if (!quiet) setIsSyncing(true);
+  const syncLiveRazorpayData = useCallback(async (isReset = false, customKeyId?: string, customKeySecret?: string) => {
+    setIsSyncing(true);
+    const kId = (customKeyId || merchantRef.current?.razorpayKeyId || '').trim();
+    const kSec = (customKeySecret || merchantRef.current?.razorpayKeySecret || '').trim();
+    if (!kId) {
+      setIsSyncing(false);
+      return;
+    }
     try {
-      const res = await fetch(`/api/razorpay/sync?keyId=${encodeURIComponent(merchant.razorpayKeyId)}&keySecret=${encodeURIComponent(merchant.razorpayKeySecret)}`);
+      const res = await fetch(`/api/razorpay/sync?keyId=${encodeURIComponent(kId)}&keySecret=${encodeURIComponent(kSec)}${isReset ? '&reset=true' : ''}`);
       const data = await res.json();
 
       if (data.success && data.transformed) {
         const { cases: realCases, customers: realCustomers, payments: realPayments, activities: realActivities } = data.transformed;
 
-        if (Array.isArray(realCases)) {
-          setCases(realCases);
-          try {
-            localStorage.setItem('recovery_cases_cache', JSON.stringify(realCases));
-          } catch {}
+        const syncedCases = Array.isArray(realCases) ? realCases : [];
+        const newCustomers = Array.isArray(realCustomers) ? realCustomers : [];
+        const newPayments = Array.isArray(realPayments) ? realPayments : [];
+        const newActivities = Array.isArray(realActivities) ? realActivities : [];
 
-          // Live update selectedCase if open
-          setSelectedCase(curr => {
-            if (!curr) return null;
-            const updated = realCases.find((rc: any) => rc.id === curr.id || (rc.invoiceNumber && rc.invoiceNumber === curr.invoiceNumber));
-            if (updated) {
-              const existingIds = new Set(curr.timeline.map((t: any) => t.id));
-              const mergedTimeline = [
-                ...curr.timeline,
-                ...updated.timeline.filter((t: any) => !existingIds.has(t.id))
-              ];
-              const isRecovered = updated.status === 'Recovered' || updated.recommendedAction === 'None (Recovered)' || curr.status === 'Recovered' || Boolean(updated.recoveredAmount && updated.recoveredAmount > 0);
-              return {
-                ...curr,
-                ...updated,
-                timeline: mergedTimeline,
-                status: isRecovered ? 'Recovered' : updated.status,
-                recommendedAction: isRecovered ? 'None (Recovered)' : updated.recommendedAction,
-                recoveredAmount: isRecovered ? (updated.recoveredAmount || updated.amount || curr.recoveredAmount) : 0,
-                recoveredAt: isRecovered ? (updated.recoveredAt || curr.recoveredAt || 'Captured') : undefined
-              };
-            }
-            return curr;
-          });
-        }
-
-        if (Array.isArray(realCustomers)) {
-          setSyncedCustomers(realCustomers);
+        // Merge: preserve any custom-built cases (RC-PAY-*, RC-SUB-*, RC-CART-*) from
+        // current state that aren't in the sync result yet — guards against race condition
+        // where onSync fires before Supabase persistence of the newly created case completes.
+        const CUSTOM_PREFIXES = ['RC-PAY-', 'RC-SUB-', 'RC-CART-'];
+        const syncedIds = new Set(syncedCases.map((c: any) => c.id));
+        setCases(prev => {
+          const preserved = prev.filter(c =>
+            CUSTOM_PREFIXES.some(p => c.id?.startsWith(p)) && !syncedIds.has(c.id)
+          );
+          const merged = [...preserved, ...syncedCases];
           try {
-            localStorage.setItem('recovery_customers_cache', JSON.stringify(realCustomers));
+            localStorage.setItem('recovery_cases_cache', JSON.stringify(merged));
           } catch {}
-        }
+          return merged;
+        });
 
-        if (Array.isArray(realPayments)) {
-          setPayments(realPayments);
-          try {
-            localStorage.setItem('recovery_payments_cache', JSON.stringify(realPayments));
-          } catch {}
-        }
+        setSyncedCustomers(newCustomers);
+        setPayments(newPayments);
+        setActivities(newActivities);
 
-        if (Array.isArray(realActivities)) {
-          setActivities(realActivities);
-          try {
-            localStorage.setItem('recovery_activities_cache', JSON.stringify(realActivities));
-          } catch {}
-        }
+        try {
+          localStorage.setItem('recovery_customers_cache', JSON.stringify(newCustomers));
+          localStorage.setItem('recovery_payments_cache', JSON.stringify(newPayments));
+          localStorage.setItem('recovery_activities_cache', JSON.stringify(newActivities));
+        } catch {}
 
         setMerchant(prev => {
-          if (prev.razorpayConnected && prev.lastSyncedAt) return prev;
-          return {
+          const updated = {
             ...prev,
+            razorpayKeyId: kId,
+            razorpayKeySecret: kSec,
             lastSyncedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             razorpayConnected: true
           };
+          try {
+            localStorage.setItem('recovery_merchant_profile', JSON.stringify(updated));
+          } catch {}
+          return updated;
         });
       }
     } catch (err) {
       console.error('Failed to sync live Razorpay data:', err);
     } finally {
-      if (!quiet) setIsSyncing(false);
+      setIsSyncing(false);
     }
-  }, [merchant.razorpayKeyId, merchant.razorpayKeySecret]);
+  }, []);
 
-  // Initial Sync & Periodic Webhook Polling (Stable 15s heartbeat)
+  // Initial Sync & Periodic Polling (Runs once on mount + 30s heartbeat)
   useEffect(() => {
-    // Load merchant settings from database
-    fetch('/api/merchant')
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.success && data.profile) {
-          setMerchant(prev => ({ ...prev, ...data.profile }));
-        }
-      })
-      .catch(() => {});
+    let isMounted = true;
 
-    // Load policies from database
-    fetch('/api/policies')
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.success && data.policies) {
-          setPolicies(prev => ({ ...prev, ...data.policies }));
+    async function init() {
+      try {
+        const resMerchant = await fetch('/api/merchant');
+        const dataMerchant = await resMerchant.json();
+        if (isMounted && dataMerchant?.success && dataMerchant.profile) {
+          const profile = dataMerchant.profile;
+          setMerchant(prev => {
+            const merged = { ...prev, ...profile };
+            try {
+              localStorage.setItem('recovery_merchant_profile', JSON.stringify(merged));
+            } catch {}
+            return merged;
+          });
+          merchantRef.current = profile;
+          await syncLiveRazorpayData(false, profile.razorpayKeyId, profile.razorpayKeySecret);
+        } else {
+          await syncLiveRazorpayData(false);
         }
-      })
-      .catch(() => {});
+      } catch {
+        await syncLiveRazorpayData(false);
+      }
 
-    syncLiveRazorpayData(false);
+      try {
+        const resPolicies = await fetch('/api/policies');
+        const dataPolicies = await resPolicies.json();
+        if (isMounted && dataPolicies?.success && dataPolicies.policies) {
+          setPolicies(prev => ({ ...prev, ...dataPolicies.policies }));
+        }
+      } catch {}
+    }
+
+    init();
+
     const interval = setInterval(() => {
-      syncLiveRazorpayData(true);
-    }, 15000);
-    return () => clearInterval(interval);
+      syncLiveRazorpayData(false);
+    }, 30000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [syncLiveRazorpayData]);
 
   // Computed Financial Metrics

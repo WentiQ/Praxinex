@@ -8,6 +8,7 @@ dotenv.config();
 export interface DBStore {
   merchant: any | null;
   policies: any | null;
+  autoTrafficState: any | null;
   cases: any[];
   customers: any[];
   activities: any[];
@@ -28,6 +29,7 @@ class DatabaseManager {
   private localCache: DBStore = {
     merchant: null,
     policies: null,
+    autoTrafficState: null,
     cases: [],
     customers: [],
     activities: [],
@@ -77,7 +79,10 @@ class DatabaseManager {
         const parsed = JSON.parse(raw);
         this.localCache = {
           merchant: parsed.merchant || null,
+          policies: parsed.policies || null,
+          autoTrafficState: parsed.autoTrafficState || null,
           cases: Array.isArray(parsed.cases) ? parsed.cases : [],
+          customers: Array.isArray(parsed.customers) ? parsed.customers : [],
           activities: Array.isArray(parsed.activities) ? parsed.activities : [],
           payments: Array.isArray(parsed.payments) ? parsed.payments : []
         };
@@ -106,11 +111,13 @@ class DatabaseManager {
         const { data, error } = await this.supabase
           .from('merchant_settings')
           .select('*')
-          .neq('id', 'recovery_policies')
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .single();
-        if (data && !error) return data.profile;
+          .not('id', 'in', '("recovery_policies","auto_traffic_state")')
+          .order('updated_at', { ascending: false });
+        if (data && !error && data.length > 0) {
+          const match = data.find(d => d.profile && (d.profile.razorpayKeyId || d.profile.email));
+          if (match) return match.profile;
+          return data[0].profile;
+        }
       } catch {}
     }
     return this.localCache.merchant;
@@ -122,7 +129,7 @@ class DatabaseManager {
         const { data, error } = await this.supabase
           .from('merchant_settings')
           .select('*')
-          .neq('id', 'recovery_policies')
+          .not('id', 'in', '("recovery_policies","auto_traffic_state")')
           .order('updated_at', { ascending: false });
         if (data && !error && data.length > 0) {
           return data.map(d => d.profile).filter(p => p && (p.razorpayKeyId || p.businessName));
@@ -177,6 +184,38 @@ class DatabaseManager {
         });
       } catch (err: any) {
         console.warn('Supabase policies upsert error:', err.message);
+      }
+    }
+  }
+
+  // --- Auto Traffic Engine State Persistence ---
+  async getAutoTrafficState(): Promise<any | null> {
+    if (this.isSupabaseActive && this.supabase) {
+      try {
+        const { data, error } = await this.supabase
+          .from('merchant_settings')
+          .select('*')
+          .eq('id', 'auto_traffic_state')
+          .single();
+        if (data && !error && data.profile) return data.profile;
+      } catch {}
+    }
+    return this.localCache.autoTrafficState;
+  }
+
+  async saveAutoTrafficState(state: any): Promise<void> {
+    this.localCache.autoTrafficState = state;
+    this.persistLocalStore();
+
+    if (this.isSupabaseActive && this.supabase) {
+      try {
+        await this.supabase.from('merchant_settings').upsert({
+          id: 'auto_traffic_state',
+          profile: state,
+          updated_at: new Date().toISOString()
+        });
+      } catch (err: any) {
+        console.warn('Supabase auto_traffic_state upsert error:', err.message);
       }
     }
   }
@@ -347,6 +386,50 @@ class DatabaseManager {
         });
       } catch (err: any) {
         console.warn('Supabase payment insert error:', err.message);
+      }
+    }
+  }
+
+  async savePayments(payments: any[]): Promise<void> {
+    this.localCache.payments = payments || [];
+    this.persistLocalStore();
+
+    if (this.isSupabaseActive && this.supabase && payments.length > 0) {
+      try {
+        const rows = payments.map(p => ({
+          id: p.id,
+          razorpay_payment_id: p.razorpayPaymentId || p.id,
+          customer_name: p.customerName || 'Customer',
+          amount: p.amount || 0,
+          status: p.status || 'succeeded',
+          timestamp: p.isoTimestamp || new Date().toISOString(),
+          payment_data: p
+        }));
+        await this.supabase.from('payments_ledger').upsert(rows);
+      } catch (err: any) {
+        console.warn('Supabase bulk payments upsert error:', err.message);
+      }
+    }
+  }
+
+  async saveActivities(activities: any[]): Promise<void> {
+    this.localCache.activities = activities || [];
+    this.persistLocalStore();
+
+    if (this.isSupabaseActive && this.supabase && activities.length > 0) {
+      try {
+        const rows = activities.slice(0, 100).map(a => ({
+          id: a.id,
+          case_id: a.caseId || '',
+          event_title: a.eventTitle || 'Action',
+          amount: a.amount || 0,
+          result_status: a.resultStatus || 'info',
+          timestamp: a.timestamp || new Date().toISOString(),
+          activity_data: a
+        }));
+        await this.supabase.from('activity_logs').upsert(rows);
+      } catch (err: any) {
+        console.warn('Supabase bulk activities upsert error:', err.message);
       }
     }
   }

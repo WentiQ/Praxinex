@@ -52,7 +52,7 @@ export const PraxinexView: React.FC<PraxinexViewProps> = ({
       sender: 'praxinex',
       text: 'Greetings. I am **Praxinex**, your autonomous AI Revenue Recovery Agent.\n\nI continuously monitor your Razorpay payment rails, detect transaction failures, evaluate dynamic recovery policies, and execute settlements autonomously. How can I assist you right now?',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      thoughts: ['Live gateway connection verified (rzp_test_TSolTvUZ0mStxn)', 'Real-time telemetry synchronized across 6 cases']
+      thoughts: ['Live gateway connection verified', 'Real-time telemetry synchronized across active cases']
     }
   ]);
   const [inputValue, setInputValue] = useState('');

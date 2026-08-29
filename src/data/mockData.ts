@@ -3,19 +3,19 @@ import firstNames from '../../data/first_names.json';
 import lastNames from '../../data/last_names.json';
 
 export const INITIAL_MERCHANT: MerchantProfile = {
-  id: 'mer_acme_8921',
-  name: 'Acme Technologies Pvt Ltd',
-  email: 'dineshpolavarapu66@gmail.com',
+  id: 'mer_default',
+  name: 'Enterprise Merchant',
+  email: 'finance@enterprise.in',
   currency: 'INR',
-  businessType: 'SaaS & Enterprise AI Services',
+  businessType: 'SaaS & Enterprise Operations',
   plan: 'Enterprise Operations',
-  razorpayKeyId: 'rzp_test_TSolTvUZ0mStxn',
-  razorpayKeySecret: 'jJtOV3iYoa1XPuuSDVj76nwc',
+  razorpayKeyId: '',
+  razorpayKeySecret: '',
   isTestMode: true,
-  razorpayConnected: true,
+  razorpayConnected: false,
   geminiApiKey: '',
-  geminiConnected: true,
-  lastSyncedAt: 'Just now'
+  geminiConnected: false,
+  lastSyncedAt: 'Never'
 };
 
 export const INITIAL_POLICIES: RecoveryPolicy = {

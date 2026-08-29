@@ -38,7 +38,7 @@ const DEFAULT_PROMPTS = [
   'What is our total revenue at risk?',
   'Generate payment link for Dinesh',
   'Show all high risk cases',
-  'Why did case RC-PL-SCyoOB fail?',
+  'Why did case RC-SUB-1082 fail?',
   'Sync data with Razorpay',
   'Go to Payments ledger'
 ];
@@ -322,7 +322,9 @@ export const PraxinexChat: React.FC<PraxinexChatProps> = ({
                   {msg.paymentLinkCard && (
                     <div className="mt-3 p-3 bg-blue-50/70 border border-blue-200 rounded-lg space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono uppercase font-bold text-blue-700">Razorpay Payment Link</span>
+                        <span className="text-[10px] font-mono uppercase font-bold text-blue-700">
+                          {msg.paymentLinkCard.url.includes('invoices.razorpay.com') ? 'Razorpay Invoice Link' : 'Razorpay Payment Link'}
+                        </span>
                         <span className="text-xs font-mono font-bold text-neutral-900">{formatINR(msg.paymentLinkCard.amount)}</span>
                       </div>
                       <div className="text-[11px] font-mono text-blue-900 bg-white p-2 rounded border border-blue-100 truncate">
@@ -333,7 +335,7 @@ export const PraxinexChat: React.FC<PraxinexChatProps> = ({
                           href={msg.paymentLinkCard.url}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex items-center space-x-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium transition-colors shadow-2xs"
+                          className="inline-flex items-center space-x-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium transition-colors"
                         >
                           <span>Open Link</span>
                           <ExternalLink className="w-3 h-3" />
