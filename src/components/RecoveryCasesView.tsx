@@ -72,16 +72,12 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
     })
     .sort((a, b) => getCaseLastUpdatedTime(b) - getCaseLastUpdatedTime(a));
 
-  // Ensure strict uniqueness in displayed list
+  // Ensure strict uniqueness in displayed list by case ID
   const seenIds = new Set<string>();
-  const seenPaymentIds = new Set<string>();
   const filteredCases = rawFiltered.filter(c => {
     if (!c || !c.id) return false;
     if (seenIds.has(c.id)) return false;
-    if (c.razorpayPaymentId && seenPaymentIds.has(c.razorpayPaymentId)) return false;
-    
     seenIds.add(c.id);
-    if (c.razorpayPaymentId) seenPaymentIds.add(c.razorpayPaymentId);
     return true;
   });
 

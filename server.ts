@@ -1023,203 +1023,8 @@ app.get('/api/razorpay/sync', async (req, res) => {
         }
       }
     }
+    // Process all live candidate cases from DB, live store, and real Razorpay invoices
     const allCandidateCases: any[] = Array.from(candidateMap.values());
-
-    // Known base cases to anchor all generated payment links & recovery actions
-    const baseKnownCases = [
-      {
-        id: 'RC-PL-XLGnEa',
-        customerName: 'Test Customer',
-        customerEmail: 'dineshpolavarapu66@gmail.com',
-        customerPhone: '+91 7032983348',
-        companyName: 'Test Account',
-        issue: 'Payment link active',
-        amount: 1500,
-        risk: 'Low',
-        recommendedAction: 'Payment link',
-        status: 'Awaiting payment',
-        updated: 'Today',
-        createdAt: new Date().toISOString(),
-        failureReason: 'Awaiting payment: "AI Revenue Recovery Test Link"',
-        failureCode: 'PAYMENT_LINK_ACTIVE',
-        paymentMethod: 'Razorpay Dynamic Rail',
-        razorpayPaymentId: 'plink_TUPt9qr2XLGnEa',
-        attemptCount: 1,
-        maxAttempts: 3,
-        recoveryProbability: 90,
-        aiWhy: 'Live test recovery case. Autonomous multi-rail payment links active.',
-        aiPolicyNote: 'Autonomous payment link policy permitted',
-        policyAllowed: true,
-        recoveredAmount: 0,
-        paymentLinkUrl: 'https://rzp.io/rzp/g8sLJtlt',
-        timeline: [
-          {
-            id: 't-xl-init',
-            timestamp: new Date(Date.now() - 86400000).toISOString(),
-            timeDisplay: 'Yesterday, 07:04 pm',
-            title: 'Initial Payment Link Created',
-            description: 'AI Revenue Recovery Test Link (plink_TUPt9qr2XLGnEa) initialized for ₹1,500.',
-            type: 'detection',
-            actionType: 'Payment link'
-          }
-        ]
-      },
-      {
-        id: 'RC-PL-bZxwmC',
-        customerName: 'dineshpolavarapu66',
-        customerEmail: 'dineshpolavarapu66@gmail.com',
-        customerPhone: '+91 7032983348',
-        companyName: 'NOEON Robotics',
-        issue: 'Payment recovered',
-        amount: 10000,
-        risk: 'Medium',
-        recommendedAction: 'None (Recovered)',
-        status: 'Recovered',
-        updated: 'Today',
-        createdAt: new Date().toISOString(),
-        failureReason: 'None (Settled)',
-        failureCode: 'PAID',
-        paymentMethod: 'Razorpay Dynamic Rail',
-        razorpayPaymentId: 'plink_TUPl2G0SbZxwmC',
-        attemptCount: 1,
-        maxAttempts: 3,
-        recoveryProbability: 100,
-        aiWhy: 'Payment of ₹10,000 has been captured & settled via Razorpay. Revenue recovery complete.',
-        aiPolicyNote: 'Revenue recovered. No action required.',
-        policyAllowed: true,
-        recoveredAmount: 10000,
-        recoveredAt: 'Captured',
-        paymentLinkUrl: 'https://rzp.io/rzp/WT6797L',
-        timeline: [
-          {
-            id: 't-bzx-init',
-            timestamp: new Date(Date.now() - 86400000).toISOString(),
-            timeDisplay: 'Yesterday, 06:57 pm',
-            title: 'Subscription Link Created',
-            description: 'Subscription recovery link (plink_TUPl2G0SbZxwmC) created for ₹10,000.',
-            type: 'detection',
-            actionType: 'Payment link'
-          }
-        ]
-      },
-      {
-        id: 'RC-PL-SCyoOB',
-        customerName: 'Valued Customer',
-        customerEmail: 'dineshpolavarapu66@gmail.com',
-        customerPhone: '+91 7032983348',
-        companyName: 'Enterprise Cloud Node',
-        issue: 'Payment link active',
-        amount: 9529,
-        risk: 'Low',
-        recommendedAction: 'Payment link',
-        status: 'Awaiting payment',
-        updated: 'Today',
-        createdAt: new Date().toISOString(),
-        failureReason: 'Awaiting link settlement: "Agentic Commerce: 1x Enterprise Cloud Compute Node (Dedicated)"',
-        failureCode: 'PAYMENT_LINK_ACTIVE',
-        paymentMethod: 'Razorpay Dynamic Rail',
-        razorpayPaymentId: 'plink_TTVUcHF1SCyoOB',
-        attemptCount: 1,
-        maxAttempts: 3,
-        recoveryProbability: 80,
-        aiWhy: 'Razorpay Payment Link active. Dispatched multi-rail checkout link.',
-        aiPolicyNote: 'Autonomous recovery link policy compliant',
-        policyAllowed: true,
-        recoveredAmount: 0,
-        paymentLinkUrl: 'https://rzp.io/rzp/J6QuVT8',
-        timeline: [
-          {
-            id: 't-scyoob-1',
-            timestamp: new Date(Date.now() - 3600000 * 48).toISOString(),
-            timeDisplay: '24 Aug 2026, 11:54 am',
-            title: 'Initial Payment Link Generated',
-            description: 'Created dedicated payment link for 1x Enterprise Compute Node (₹9,529): https://rzp.io/rzp/J6QuVT8',
-            type: 'detection',
-            actionType: 'Payment link'
-          }
-        ]
-      },
-      {
-        id: 'RC-PL-IJ2I8d',
-        customerName: 'ABC Industries Pvt Ltd',
-        customerEmail: 'finance@merchant.in',
-        customerPhone: '+91 98765 43210',
-        companyName: 'ABC Industries',
-        issue: 'Invoice overdue',
-        amount: 420000,
-        risk: 'High',
-        recommendedAction: 'Payment link',
-        status: 'Awaiting payment',
-        updated: 'Today',
-        createdAt: new Date().toISOString(),
-        failureReason: 'Overdue commercial settlement: "Settlement: Customer ABC — ₹4.2L Overdue Invoice"',
-        failureCode: 'SETTLEMENT_OVERDUE',
-        paymentMethod: 'Razorpay Dynamic Rail',
-        razorpayPaymentId: 'plink_TTVhyxk7IJ2I8d',
-        attemptCount: 1,
-        maxAttempts: 3,
-        recoveryProbability: 70,
-        aiWhy: 'High-value B2B settlement link active for ABC Industries.',
-        aiPolicyNote: 'High value commercial recovery bounds verified',
-        policyAllowed: true,
-        recoveredAmount: 0,
-        paymentLinkUrl: 'https://rzp.io/rzp/jTGXmhm',
-        timeline: [
-          {
-            id: 't-ij2i8d-1',
-            timestamp: new Date(Date.now() - 3600000 * 48).toISOString(),
-            timeDisplay: '24 Aug 2026, 12:07 pm',
-            title: 'Initial Settlement Link Issued',
-            description: 'Dispatched ₹4,20,000 settlement payment link for overdue commercial invoice: https://rzp.io/rzp/jTGXmhm',
-            type: 'detection',
-            actionType: 'Payment link'
-          }
-        ]
-      },
-      {
-        id: 'RC-PL-Oy4LkL',
-        customerName: 'ABC Industries Pvt Ltd',
-        customerEmail: 'finance@merchant.in',
-        customerPhone: '+91 98765 43210',
-        companyName: 'ABC Industries',
-        issue: 'Invoice overdue',
-        amount: 420000,
-        risk: 'High',
-        recommendedAction: 'Payment link',
-        status: 'Awaiting payment',
-        updated: 'Today',
-        createdAt: new Date().toISOString(),
-        failureReason: 'Payment extension: "Formal 7-day Payment Extension - Invoice #inc_abc_001"',
-        failureCode: 'EXTENSION_GRANTED',
-        paymentMethod: 'Razorpay Dynamic Rail',
-        razorpayPaymentId: 'plink_TTDOzPXoOy4LkL',
-        attemptCount: 1,
-        maxAttempts: 3,
-        recoveryProbability: 70,
-        aiWhy: 'Formal payment extension link active.',
-        aiPolicyNote: 'Extension approved by Merchant Finance',
-        policyAllowed: true,
-        recoveredAmount: 0,
-        paymentLinkUrl: 'https://rzp.io/rzp/RZ6Q8FE',
-        timeline: [
-          {
-            id: 't-oy-init',
-            timestamp: new Date(Date.now() - 3600000 * 72).toISOString(),
-            timeDisplay: '23 Aug 2026, 06:12 pm',
-            title: 'Payment Extension Link Created',
-            description: 'Formal 7-day payment extension issued for ₹4,20,000 (Invoice #inc_abc_001).',
-            type: 'detection',
-            actionType: 'Payment link'
-          }
-        ]
-      }
-    ];
-
-    baseKnownCases.forEach(bc => {
-      if (!allCandidateCases.some(c => c.id === bc.id)) {
-        allCandidateCases.push(bc);
-      }
-    });
 
     const standaloneLinkCases: any[] = [];
 
@@ -1444,31 +1249,16 @@ app.get('/api/razorpay/sync', async (req, res) => {
       })
     ];
 
-    // Deduplicate allRealCases strictly by case ID, payment link ID, invoice number, and link URL
+    // Deduplicate allRealCases by unique case ID
     const cleanCasesMap = new Map<string, any>();
-    const linkIdToCaseIdMap = new Map<string, string>();
-    const invoiceToCaseIdMap = new Map<string, string>();
-    const urlToCaseIdMap = new Map<string, string>();
 
     for (const c of allRealCases) {
       if (!c || !c.id) continue;
-
-      // Find existing canonical case ID if matched by razorpayPaymentId, invoiceNumber, or URL
-      let canonicalId = c.id;
-      if (c.razorpayPaymentId && linkIdToCaseIdMap.has(c.razorpayPaymentId)) {
-        canonicalId = linkIdToCaseIdMap.get(c.razorpayPaymentId)!;
-      } else if (c.invoiceNumber && invoiceToCaseIdMap.has(c.invoiceNumber)) {
-        canonicalId = invoiceToCaseIdMap.get(c.invoiceNumber)!;
-      } else if (c.paymentLinkUrl && urlToCaseIdMap.has(c.paymentLinkUrl)) {
-        canonicalId = urlToCaseIdMap.get(c.paymentLinkUrl)!;
-      }
+      const canonicalId = c.id;
 
       const existing = cleanCasesMap.get(canonicalId);
       if (!existing) {
         cleanCasesMap.set(canonicalId, { ...c, id: canonicalId, timeline: [...(c.timeline || [])] });
-        if (c.razorpayPaymentId) linkIdToCaseIdMap.set(c.razorpayPaymentId, canonicalId);
-        if (c.invoiceNumber) invoiceToCaseIdMap.set(c.invoiceNumber, canonicalId);
-        if (c.paymentLinkUrl) urlToCaseIdMap.set(c.paymentLinkUrl, canonicalId);
       } else {
         const isRecovered = existing.status === 'Recovered' || c.status === 'Recovered';
         cleanCasesMap.set(canonicalId, {
@@ -1484,9 +1274,6 @@ app.get('/api/razorpay/sync', async (req, res) => {
           invoiceNumber: c.invoiceNumber || existing.invoiceNumber,
           timeline: [...(existing.timeline || []), ...(c.timeline || []).filter((t: any) => !(existing.timeline || []).some((et: any) => et.id === t.id))]
         });
-        if (c.razorpayPaymentId) linkIdToCaseIdMap.set(c.razorpayPaymentId, canonicalId);
-        if (c.invoiceNumber) invoiceToCaseIdMap.set(c.invoiceNumber, canonicalId);
-        if (c.paymentLinkUrl) urlToCaseIdMap.set(c.paymentLinkUrl, canonicalId);
       }
     }
 
@@ -1913,7 +1700,7 @@ interface AutoTrafficEngineConfig {
 }
 
 let autoTrafficConfig: AutoTrafficEngineConfig = {
-  isRunning: true,
+  isRunning: false,
   maxDailyCases: 100,
   targetCasesToday: 80,
   generatedToday: 0,
@@ -2856,9 +2643,6 @@ async function runAutonomousRecoveryCycle() {
 
 function startCloudAutonomousWorker() {
   console.log('🚀 [Autonomous Cloud Worker] Initializing 24/7 background agent...');
-  
-  // Start traffic scheduling immediately
-  scheduleNextTrafficEvent();
 
   // Run initial autonomous cycle after 6 seconds
   setTimeout(() => {

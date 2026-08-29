@@ -51,9 +51,29 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Core Data
-  const [cases, setCases] = useState<RecoveryCase[]>(INITIAL_CASES);
-  const [activities, setActivities] = useState<ActivityEvent[]>(INITIAL_ACTIVITIES);
+  // Core Data - initialized from deterministic cache to prevent layout shift or flashing on refresh
+  const [cases, setCases] = useState<RecoveryCase[]>(() => {
+    try {
+      const saved = localStorage.getItem('recovery_cases_cache');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_CASES;
+  });
+
+  const [activities, setActivities] = useState<ActivityEvent[]>(() => {
+    try {
+      const saved = localStorage.getItem('recovery_activities_cache');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_ACTIVITIES;
+  });
+
   const [merchant, setMerchant] = useState<MerchantProfile>(() => {
     try {
       const saved = localStorage.getItem('recovery_merchant_profile');
@@ -94,68 +114,40 @@ export default function App() {
     } catch {}
   };
 
-  useEffect(() => {
-    // Load merchant settings from database
-    fetch('/api/merchant')
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.success && data.profile) {
-          setMerchant(prev => ({ ...prev, ...data.profile }));
-        }
-      })
-      .catch(() => {});
+  const [payments, setPayments] = useState<PaymentRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem('recovery_payments_cache');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return PAYMENT_LEDGER;
+  });
 
-    // Load policies from database
-    fetch('/api/policies')
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.success && data.policies) {
-          setPolicies(prev => ({ ...prev, ...data.policies }));
-        }
-      })
-      .catch(() => {});
-
-    // Load cases from shared database
-    fetch('/api/cases')
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.success && Array.isArray(data.cases) && data.cases.length > 0) {
-          setCases(data.cases);
-        }
-      })
-      .catch(() => {});
-
-    // Load activities from shared database
-    fetch('/api/activities')
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.success && Array.isArray(data.activities) && data.activities.length > 0) {
-          setActivities(data.activities);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  const [payments, setPayments] = useState<PaymentRecord[]>(PAYMENT_LEDGER);
-  const [syncedCustomers, setSyncedCustomers] = useState<CustomerRecord[]>([]);
+  const [syncedCustomers, setSyncedCustomers] = useState<CustomerRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem('recovery_customers_cache');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return CUSTOMER_DIRECTORY;
+  });
 
   // Dynamically calculate and update Customers in real-time from all cases and payments
   const customers: CustomerRecord[] = useMemo(() => {
     const map = new Map<string, CustomerRecord>();
 
-    // 1. Initial base customers
-    CUSTOMER_DIRECTORY.forEach(c => {
-      map.set(c.email.toLowerCase(), { ...c });
-    });
-
-    // 2. Synced customers from Razorpay
+    // 1. Synced customers from Razorpay
     syncedCustomers.forEach(c => {
       const email = (c.email || '').toLowerCase().trim();
       if (!email) return;
       map.set(email, { ...c });
     });
 
-    // 3. Dynamic Aggregation from all live cases
+    // 2. Dynamic Aggregation from all live cases
     cases.forEach(cs => {
       if (!cs || !cs.customerEmail) return;
       const email = cs.customerEmail.toLowerCase().trim();
@@ -192,7 +184,7 @@ export default function App() {
       map.set(email, existing);
     });
 
-    // 4. Update from payments
+    // 3. Update from payments
     payments.forEach(p => {
       if (!p || !p.customerEmail) return;
       const email = p.customerEmail.toLowerCase().trim();
@@ -262,59 +254,11 @@ export default function App() {
       if (data.success && data.transformed) {
         const { cases: realCases, customers: realCustomers, payments: realPayments, activities: realActivities } = data.transformed;
 
-        if (realCases && realCases.length > 0) {
-          setCases(prev => {
-            const casesMap = new Map<string, any>();
-            const linkIdMap = new Map<string, string>();
-            const invoiceMap = new Map<string, string>();
-            const urlMap = new Map<string, string>();
-
-            const addOrMerge = (c: any) => {
-              if (!c || !c.id) return;
-              let targetId = c.id;
-
-              if (c.razorpayPaymentId && linkIdMap.has(c.razorpayPaymentId)) {
-                targetId = linkIdMap.get(c.razorpayPaymentId)!;
-              } else if (c.invoiceNumber && invoiceMap.has(c.invoiceNumber)) {
-                targetId = invoiceMap.get(c.invoiceNumber)!;
-              } else if (c.paymentLinkUrl && urlMap.has(c.paymentLinkUrl)) {
-                targetId = urlMap.get(c.paymentLinkUrl)!;
-              }
-
-              const existing = casesMap.get(targetId);
-              if (existing) {
-                const existingTimelineIds = new Set((existing.timeline || []).map((t: any) => t.id));
-                const mergedTimeline = [
-                  ...(existing.timeline || []),
-                  ...(c.timeline || []).filter((t: any) => !existingTimelineIds.has(t.id))
-                ];
-                const isRecovered = c.status === 'Recovered' || existing.status === 'Recovered';
-                casesMap.set(targetId, {
-                  ...existing,
-                  ...c,
-                  id: targetId,
-                  status: isRecovered ? 'Recovered' : c.status,
-                  recommendedAction: isRecovered ? 'None (Recovered)' : c.recommendedAction,
-                  recoveredAmount: isRecovered ? (c.recoveredAmount || c.amount || existing.recoveredAmount) : 0,
-                  recoveredAt: isRecovered ? (c.recoveredAt || existing.recoveredAt || 'Captured') : undefined,
-                  paymentLinkUrl: c.paymentLinkUrl || existing.paymentLinkUrl,
-                  razorpayPaymentId: c.razorpayPaymentId || existing.razorpayPaymentId,
-                  invoiceNumber: c.invoiceNumber || existing.invoiceNumber,
-                  timeline: mergedTimeline
-                });
-              } else {
-                casesMap.set(targetId, { ...c, id: targetId });
-                if (c.razorpayPaymentId) linkIdMap.set(c.razorpayPaymentId, targetId);
-                if (c.invoiceNumber) invoiceMap.set(c.invoiceNumber, targetId);
-                if (c.paymentLinkUrl) urlMap.set(c.paymentLinkUrl, targetId);
-              }
-            };
-
-            for (const p of prev) addOrMerge(p);
-            for (const rc of realCases) addOrMerge(rc);
-
-            return Array.from(casesMap.values());
-          });
+        if (Array.isArray(realCases)) {
+          setCases(realCases);
+          try {
+            localStorage.setItem('recovery_cases_cache', JSON.stringify(realCases));
+          } catch {}
 
           // Live update selectedCase if open
           setSelectedCase(curr => {
@@ -329,41 +273,37 @@ export default function App() {
               const isRecovered = updated.status === 'Recovered' || updated.recommendedAction === 'None (Recovered)' || curr.status === 'Recovered' || Boolean(updated.recoveredAmount && updated.recoveredAmount > 0);
               return {
                 ...curr,
-                paymentLinkUrl: updated.paymentLinkUrl || curr.paymentLinkUrl,
-                razorpayPaymentId: updated.razorpayPaymentId || curr.razorpayPaymentId,
+                ...updated,
+                timeline: mergedTimeline,
                 status: isRecovered ? 'Recovered' : updated.status,
                 recommendedAction: isRecovered ? 'None (Recovered)' : updated.recommendedAction,
                 recoveredAmount: isRecovered ? (updated.recoveredAmount || updated.amount || curr.recoveredAmount) : 0,
-                recoveredAt: isRecovered ? (updated.recoveredAt || curr.recoveredAt || 'Captured') : undefined,
-                timeline: mergedTimeline
+                recoveredAt: isRecovered ? (updated.recoveredAt || curr.recoveredAt || 'Captured') : undefined
               };
             }
             return curr;
           });
         }
 
-        if (realCustomers && realCustomers.length > 0) {
-          setSyncedCustomers(prev => {
-            const existingEmails = new Set(realCustomers.map((c: any) => c.email));
-            const retained = prev.filter(c => !existingEmails.has(c.email));
-            return [...realCustomers, ...retained];
-          });
+        if (Array.isArray(realCustomers)) {
+          setSyncedCustomers(realCustomers);
+          try {
+            localStorage.setItem('recovery_customers_cache', JSON.stringify(realCustomers));
+          } catch {}
         }
 
-        if (realPayments && realPayments.length > 0) {
-          setPayments(prev => {
-            const existingIds = new Set(realPayments.map((p: any) => p.id));
-            const retained = prev.filter(p => !existingIds.has(p.id));
-            return [...realPayments, ...retained];
-          });
+        if (Array.isArray(realPayments)) {
+          setPayments(realPayments);
+          try {
+            localStorage.setItem('recovery_payments_cache', JSON.stringify(realPayments));
+          } catch {}
         }
 
-        if (realActivities && realActivities.length > 0) {
-          setActivities(prev => {
-            const existingIds = new Set(realActivities.map((a: any) => a.id));
-            const retained = prev.filter(a => !existingIds.has(a.id));
-            return [...realActivities, ...retained];
-          });
+        if (Array.isArray(realActivities)) {
+          setActivities(realActivities);
+          try {
+            localStorage.setItem('recovery_activities_cache', JSON.stringify(realActivities));
+          } catch {}
         }
 
         setMerchant(prev => {
@@ -384,12 +324,32 @@ export default function App() {
 
   // Initial Sync & Periodic Webhook Polling (Stable 15s heartbeat)
   useEffect(() => {
+    // Load merchant settings from database
+    fetch('/api/merchant')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.success && data.profile) {
+          setMerchant(prev => ({ ...prev, ...data.profile }));
+        }
+      })
+      .catch(() => {});
+
+    // Load policies from database
+    fetch('/api/policies')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.success && data.policies) {
+          setPolicies(prev => ({ ...prev, ...data.policies }));
+        }
+      })
+      .catch(() => {});
+
     syncLiveRazorpayData(false);
     const interval = setInterval(() => {
       syncLiveRazorpayData(true);
     }, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [syncLiveRazorpayData]);
 
   // Computed Financial Metrics
   const totalAtRisk = cases.reduce((sum, c) => sum + (c.status !== 'Recovered' ? c.amount : 0), 0);
