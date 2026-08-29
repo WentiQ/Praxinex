@@ -81,10 +81,11 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 
       if (!hasDuplicate) {
         const isSuccess = p.status === 'succeeded';
+        const eventTs = p.isoTimestamp || (p.timestamp && !isNaN(new Date(p.timestamp).getTime()) ? new Date(p.timestamp).toISOString() : caseItem.createdAt || new Date().toISOString());
         events.push({
           id: tId,
-          timestamp: p.isoTimestamp || (p.timestamp ? new Date(p.timestamp).toISOString() : new Date().toISOString()),
-          timeDisplay: p.timestamp || 'Just now',
+          timestamp: eventTs,
+          timeDisplay: p.timestamp || 'Settled',
           title: isSuccess ? `Payment Captured (${pId})` : `Payment Attempt Failed (${pId})`,
           description: isSuccess
             ? `Razorpay confirmed capture of ${formatINR(p.amount)} via ${p.method || 'Gateway'} (Transaction ID: ${pId}). Revenue recovered.`

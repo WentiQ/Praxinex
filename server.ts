@@ -658,7 +658,22 @@ app.post('/api/policies', async (req, res) => {
 app.get('/api/cases', async (_req, res) => {
   const cases = await db.getCases();
   sanitizeCasePaymentUrls(cases);
-  res.json({ success: true, cases });
+  const getCaseLatestMs = (c: any): number => {
+    let latest = 0;
+    if (Array.isArray(c.timeline)) {
+      c.timeline.forEach((t: any) => {
+        const ms = t?.timestamp ? new Date(t.timestamp).getTime() : 0;
+        if (!isNaN(ms) && ms > latest) latest = ms;
+      });
+    }
+    if (!latest && c.createdAt) {
+      const ms = new Date(c.createdAt).getTime();
+      if (!isNaN(ms)) latest = ms;
+    }
+    return latest;
+  };
+  const sorted = [...cases].sort((a, b) => getCaseLatestMs(b) - getCaseLatestMs(a));
+  res.json({ success: true, cases: sorted });
 });
 
 app.post('/api/cases', async (req, res) => {
@@ -1325,6 +1340,9 @@ app.get('/api/razorpay/sync', async (req, res) => {
       const caseId = `RC-SUB-${sub.id.slice(-6)}`;
       const planName = plan.item?.name || 'Recurring Enterprise Subscription';
 
+      const subCreatedEpoch = sub.created_at || (sub.current_start ? sub.current_start - 300 : Math.floor(Date.now() / 1000) - 3600);
+      const subHaltedEpoch = sub.current_end || (subCreatedEpoch + 300);
+
       return {
         id: caseId,
         customerName,
@@ -1336,8 +1354,8 @@ app.get('/api/razorpay/sync', async (req, res) => {
         risk: subAmount >= 50000 ? 'High' : 'Medium',
         recommendedAction: isPaid ? 'None (Recovered)' : 'Payment link',
         status: isPaid ? 'Recovered' : (isHalted ? 'Needs review' : 'Awaiting payment'),
-        updated: formatRazorpayDateTime(sub.current_end || sub.created_at || Math.floor(Date.now() / 1000)),
-        createdAt: new Date((sub.created_at || Math.floor(Date.now() / 1000)) * 1000).toISOString(),
+        updated: formatRazorpayDateTime(subHaltedEpoch),
+        createdAt: new Date(subCreatedEpoch * 1000).toISOString(),
         failureReason: isPaid ? 'None (Active)' : `Recurring auto-debit charge failed for ${planName} (Status: ${sub.status})`,
         failureCode: 'RECURRING_AUTOPAY_FAILED',
         paymentMethod: 'Razorpay Recurring Autopay (e-Mandate / Cards)',
@@ -1355,16 +1373,16 @@ app.get('/api/razorpay/sync', async (req, res) => {
         timeline: [
           {
             id: `t-sub-${sub.id}-1`,
-            timestamp: new Date((sub.created_at || Math.floor(Date.now() / 1000)) * 1000).toISOString(),
-            timeDisplay: formatRazorpayDateTime(sub.created_at || Math.floor(Date.now() / 1000)),
+            timestamp: new Date(subCreatedEpoch * 1000).toISOString(),
+            timeDisplay: formatRazorpayDateTime(subCreatedEpoch),
             title: `Subscription ${sub.id} (${planName}) registered on Razorpay`,
             description: `Recurring mandate registered for ₹${subAmount.toLocaleString('en-IN')}/billing cycle.`,
             type: 'detection'
           },
           {
             id: `t-sub-${sub.id}-2`,
-            timestamp: new Date().toISOString(),
-            timeDisplay: 'Just now',
+            timestamp: new Date(subHaltedEpoch * 1000).toISOString(),
+            timeDisplay: formatRazorpayDateTime(subHaltedEpoch),
             title: isPaid ? 'Recurring payment captured' : 'Recurring mandate auto-debit failed',
             description: isPaid ? 'Cycle billed successfully.' : `Bank declined recurring auto-debit for ${planName}. Subscription halted.`,
             type: isPaid ? 'success' : 'failure'
@@ -1485,7 +1503,26 @@ app.get('/api/razorpay/sync', async (req, res) => {
     });
     // ───────────────────────────────────────────────────────────────────────────────────────
 
-    const finalCleanCases = Array.from(cleanCasesMap.values());
+    const getCaseLatestTimelineMs = (c: any): number => {
+      let latest = 0;
+      if (Array.isArray(c.timeline) && c.timeline.length > 0) {
+        c.timeline.forEach((t: any) => {
+          if (t && t.timestamp) {
+            const ms = new Date(t.timestamp).getTime();
+            if (!isNaN(ms) && ms > latest) latest = ms;
+          }
+        });
+      }
+      if (!latest && c.createdAt) {
+        const ms = new Date(c.createdAt).getTime();
+        if (!isNaN(ms)) latest = ms;
+      }
+      return latest;
+    };
+
+    const finalCleanCases = Array.from(cleanCasesMap.values()).sort(
+      (a, b) => getCaseLatestTimelineMs(b) - getCaseLatestTimelineMs(a)
+    );
 
     // 4. Map Real Customers from Razorpay
     const customerMap = new Map<string, any>();

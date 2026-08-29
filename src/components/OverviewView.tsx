@@ -55,18 +55,32 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   onExecuteAction
 }) => {
   const getCaseLastUpdatedTime = (c: RecoveryCase): number => {
+    let latestMs = 0;
+
+    // 1. Scan entire timeline to find the most recent event timestamp
     if (Array.isArray(c.timeline) && c.timeline.length > 0) {
-      const latestTimeline = c.timeline.reduce((max, t) => {
-        const time = t.timestamp ? new Date(t.timestamp).getTime() : 0;
-        return time > max ? time : max;
-      }, 0);
-      if (latestTimeline > 0) return latestTimeline;
+      c.timeline.forEach((t) => {
+        if (t && t.timestamp) {
+          const ms = new Date(t.timestamp).getTime();
+          if (!isNaN(ms) && ms > latestMs) {
+            latestMs = ms;
+          }
+        }
+      });
     }
+
+    // 2. Fallbacks: recoveredAt, createdAt
+    if (c.recoveredAt) {
+      const ms = new Date(c.recoveredAt).getTime();
+      if (!isNaN(ms) && ms > latestMs) latestMs = ms;
+    }
+
     if (c.createdAt) {
-      const time = new Date(c.createdAt).getTime();
-      if (!isNaN(time) && time > 0) return time;
+      const ms = new Date(c.createdAt).getTime();
+      if (!isNaN(ms) && ms > latestMs) latestMs = ms;
     }
-    return 0;
+
+    return latestMs;
   };
 
   // Top critical cases sorted by latest updated first
