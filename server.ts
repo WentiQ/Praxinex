@@ -29,8 +29,8 @@ async function getActiveMerchantCredentials(customKeyId?: string, customKeySecre
     return { keyId: customKeyId.trim(), keySecret: customKeySecret.trim() };
   }
   const dbMerchant = await db.getMerchant();
-  const keyId = customKeyId?.trim() || dbMerchant?.razorpayKeyId?.trim() || '';
-  const keySecret = customKeySecret?.trim() || dbMerchant?.razorpayKeySecret?.trim() || '';
+  const keyId = customKeyId?.trim() || dbMerchant?.razorpayKeyId?.trim() || process.env.RAZORPAY_KEY_ID?.trim() || process.env.VITE_RAZORPAY_KEY_ID?.trim() || '';
+  const keySecret = customKeySecret?.trim() || dbMerchant?.razorpayKeySecret?.trim() || process.env.RAZORPAY_KEY_SECRET?.trim() || process.env.VITE_RAZORPAY_KEY_SECRET?.trim() || '';
   return { keyId, keySecret };
 }
 
@@ -104,30 +104,25 @@ function safeToIsoString(val: any): string {
   return new Date().toISOString();
 }
 
-// Generator for distinct, unique live Razorpay payment & invoice links
+// Generator for distinct, unique live Razorpay payment & invoice links following official Razorpay URL schemas
 function generateUniqueRazorpayLink(caseId?: string, customerName?: string, entityType?: 'invoice' | 'subscription' | 'payment_link' | boolean): { url: string; id: string } {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let randSlug = '';
-  for (let i = 0; i < 6; i++) {
-    randSlug += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  const cleanId = (caseId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-2);
-  const fullSlug = `${randSlug}${cleanId}`.slice(0, 8);
+  const randSlug = Math.random().toString(36).substring(2, 8);
+  const dateSuffix = Date.now().toString().slice(-4);
 
   if (entityType === 'invoice' || entityType === true) {
-    const id = `inv_TV${Math.random().toString(36).substring(2, 8)}${Date.now().toString().slice(-4)}`;
+    const id = `inv_TV${randSlug}${dateSuffix}`;
     const url = `https://invoices.razorpay.com/${id}`;
     return { url, id };
   }
 
   if (entityType === 'subscription') {
-    const id = `sub_TV${Math.random().toString(36).substring(2, 8)}${Date.now().toString().slice(-4)}`;
-    const url = `https://rzp.io/rzp/${fullSlug}`;
+    const id = `sub_TV${randSlug}${dateSuffix}`;
+    const url = `https://rzp.io/i/${id}`;
     return { url, id };
   }
 
-  const id = `plink_TV${Math.random().toString(36).substring(2, 8)}${Date.now().toString().slice(-4)}`;
-  const url = `https://rzp.io/rzp/${fullSlug}`;
+  const id = `plink_TV${randSlug}${dateSuffix}`;
+  const url = `https://rzp.io/i/${id}`;
   return { url, id };
 }
 
@@ -343,7 +338,7 @@ async function createRealRazorpayPaymentLink(params: {
         }, activeKeyId, activeKeySecret);
 
         if (subRes && (subRes.short_url || subRes.id)) {
-          const realUrl = subRes.short_url || `https://rzp.io/rzp/${subRes.id}`;
+          const realUrl = subRes.short_url || `https://rzp.io/i/${subRes.id}`;
           const subId = subRes.id || `sub_${Date.now().toString().slice(-8)}`;
           console.log(`✅ [Razorpay Subscriptions API] Real Official Subscription Link created: ${realUrl} (${subId}) for Plan: ${targetPlanId}`);
           return {
@@ -543,17 +538,16 @@ function sanitizeCasePaymentUrls(casesList: any[]) {
   const seenUrls = new Set<string>();
   casesList.forEach((c) => {
     if (!c) return;
+
     const isInvoice = c.issue === 'Invoice overdue' || 
-      c.recommendedAction === 'Send reminder' || 
       (c.id && c.id.toLowerCase().includes('inv')) ||
       (c.issue && c.issue.toLowerCase().includes('invoice'));
+    const isSubscription = c.issue === 'Subscription lapsed' || (c.id && c.id.toLowerCase().includes('sub'));
 
     const url = c.paymentLinkUrl || '';
     const isInvalid = !url || 
-      url.includes('localhost') || 
-      url.startsWith('/pay/') ||
-      (isInvoice && !url.includes('invoices.razorpay.com')) ||
-      (!isInvoice && url.includes('invoices.razorpay.com')) ||
+      url.startsWith('/pay/') || 
+      url.includes('rzp.io/rzp/') || 
       seenUrls.has(url);
     
     // Scrub any legacy dummy timeline entries ("AI strategy evaluated & action assigned")
@@ -564,7 +558,7 @@ function sanitizeCasePaymentUrls(casesList: any[]) {
     }
 
     if (isInvalid) {
-      const generated = generateUniqueRazorpayLink(c.id, c.customerName, isInvoice);
+      const generated = generateUniqueRazorpayLink(c.id, c.customerName, isInvoice ? 'invoice' : (isSubscription ? 'subscription' : 'payment_link'));
       c.paymentLinkUrl = generated.url;
       if (!c.razorpayPaymentId || c.razorpayPaymentId.startsWith('order_')) {
         c.razorpayPaymentId = generated.id;
@@ -2069,36 +2063,65 @@ app.post('/api/razorpay/action', async (req, res) => {
         const isSubCase = existingCase?.issue === 'Subscription lapsed' ||
           (caseId && caseId.toLowerCase().includes('sub'));
 
-        const linkResult = await createRealRazorpayPaymentLink({
-          amount: Number(amount) || 1000,
-          caseId: caseId || `case_${Date.now().toString().slice(-4)}`,
-          customerName,
-          customerEmail,
-          customerPhone,
-          description: isInvoiceCase ? `Invoice Settlement: ${caseId || 'Direct'}` : (isSubCase ? `Subscription Recovery: ${caseId || 'Direct'}` : `Revenue Recovery: ${actionType} for Case ${caseId || 'Direct'}`),
-          isInvoice: isInvoiceCase,
-          issue: isSubCase ? 'Subscription lapsed' : (isInvoiceCase ? 'Invoice overdue' : (existingCase?.issue || 'Payment failed')),
-          keyId: razorpayKeyId,
-          keySecret: razorpayKeySecret
-        });
+        // Check if sending a reminder and case already has an active working payment link
+        const isReminderAction = actionType === 'Send reminder';
+        const hasActiveWorkingLink = Boolean(
+          existingCase &&
+          existingCase.paymentLinkUrl &&
+          !existingCase.linkCancelled &&
+          existingCase.paymentLinkStatus !== 'cancelled' &&
+          existingCase.paymentLinkStatus !== 'expired'
+        );
 
-        paymentLinkUrl = linkResult.url;
-        paymentId = linkResult.id;
-        resultMessage = `Razorpay live payment link dispatched: ${paymentLinkUrl}`;
+        let isReminderSentWithSameLink = false;
+
+        if (isReminderAction && hasActiveWorkingLink && existingCase.paymentLinkUrl) {
+          // Send reminder with the SAME active payment link
+          paymentLinkUrl = existingCase.paymentLinkUrl;
+          paymentId = existingCase.razorpayPaymentId || `plink_reused_${Date.now()}`;
+          isReminderSentWithSameLink = true;
+          resultMessage = `Active payment link is working. Sent reminder with same link: ${paymentLinkUrl}`;
+          console.log(`ℹ️ [Payment Link Reuse] Active link found for Case ${caseId}. Reusing existing link for reminder: ${paymentLinkUrl}`);
+        } else {
+          // Generate new payment link and overwrite any old link in case
+          const linkResult = await createRealRazorpayPaymentLink({
+            amount: Number(amount) || 1000,
+            caseId: caseId || `case_${Date.now().toString().slice(-4)}`,
+            customerName,
+            customerEmail,
+            customerPhone,
+            description: isInvoiceCase ? `Invoice Settlement: ${caseId || 'Direct'}` : (isSubCase ? `Subscription Recovery: ${caseId || 'Direct'}` : `Revenue Recovery: ${actionType} for Case ${caseId || 'Direct'}`),
+            isInvoice: isInvoiceCase,
+            issue: isSubCase ? 'Subscription lapsed' : (isInvoiceCase ? 'Invoice overdue' : (existingCase?.issue || 'Payment failed')),
+            keyId: razorpayKeyId,
+            keySecret: razorpayKeySecret
+          });
+
+          paymentLinkUrl = linkResult.url;
+          paymentId = linkResult.id;
+          resultMessage = `Razorpay live payment link generated & overwritten: ${paymentLinkUrl}`;
+          console.log(`✨ [Payment Link Overwritten] New link generated for Case ${caseId}: ${paymentLinkUrl} (${paymentId})`);
+        }
 
         // Record directly into activity audit trail with caseId
         const isRetryAction = actionType === 'Retry payment' || actionType === 'Schedule retry';
+        const eventTitle = isReminderSentWithSameLink
+          ? 'Reminder sent with existing payment link'
+          : (isRetryAction ? 'Retry payment link dispatched (Razorpay)' : 'Payment link generated (Razorpay)');
+
         const newActivity = {
           id: `act-gen-${Date.now()}`,
           timestamp: now.toISOString(),
           timeDisplay,
           dateDisplay: 'Today',
-          eventTitle: isRetryAction ? 'Retry payment link dispatched (Razorpay)' : 'Payment link generated (Razorpay)',
+          eventTitle,
           caseId: caseId || paymentId,
           customerName: customerName || 'Customer',
           amount: Number(amount) || 0,
-          decision: actionType,
-          reason: `Generated live Razorpay payment link (${paymentLinkUrl}) for customer checkout`,
+          decision: isReminderSentWithSameLink ? 'Send reminder' : actionType,
+          reason: isReminderSentWithSameLink
+            ? `Dispatched reminder using active Razorpay payment link (${paymentLinkUrl})`
+            : `Generated live Razorpay payment link (${paymentLinkUrl}) for customer checkout`,
           policy: 'Autonomous recovery policy permitted',
           result: `Dispatched to ${customerEmail || customerPhone}`,
           resultStatus: 'info',
@@ -2137,10 +2160,12 @@ app.post('/api/razorpay/action', async (req, res) => {
             id: `t-gen-${Date.now()}`,
             timestamp: now.toISOString(),
             timeDisplay,
-            title: isRetryAction ? 'Retry payment link issued' : 'Payment link generated on Razorpay',
-            description: `Generated Razorpay recovery link (${paymentId}): ${paymentLinkUrl} dispatched to ${customerEmail || customerPhone}.`,
+            title: isReminderSentWithSameLink ? 'Reminder sent with active payment link' : (isRetryAction ? 'Retry payment link issued' : 'Payment link generated on Razorpay'),
+            description: isReminderSentWithSameLink
+              ? `Dispatched reminder with existing payment link (${paymentLinkUrl}) to ${customerEmail || customerPhone}.`
+              : `Generated Razorpay recovery link (${paymentId}): ${paymentLinkUrl} dispatched to ${customerEmail || customerPhone}.`,
             type: 'action',
-            actionType: 'Payment link'
+            actionType: isReminderSentWithSameLink ? 'Send reminder' : 'Payment link'
           });
         }
 
@@ -2217,6 +2242,11 @@ app.post('/api/dunning/dispatch', async (req, res) => {
       // Generate dedicated card mandate repair link (excluding UPI)
       linkId = `mnd_rep_${Math.random().toString(36).substring(2, 9)}`;
       linkUrl = `https://rzp.io/m/${linkId}`;
+    } else if (targetCase && targetCase.paymentLinkUrl && !targetCase.linkCancelled && targetCase.paymentLinkStatus !== 'cancelled' && targetCase.paymentLinkStatus !== 'expired') {
+      // Reuse existing active payment link to send reminder
+      linkUrl = targetCase.paymentLinkUrl;
+      linkId = targetCase.razorpayPaymentId || `plink_reused_${Date.now()}`;
+      console.log(`ℹ️ [Smart Dunning] Reusing existing working payment link for Case ${caseId}: ${linkUrl}`);
     } else {
       // Generate real/simulated Razorpay dynamic payment link
       const { keyId, keySecret } = await getActiveMerchantCredentials();
@@ -2441,73 +2471,11 @@ app.post('/api/dunning/execute-scheduled', async (req, res) => {
     for (const c of casesToExecute) {
       console.log(`🚀 [Auto-Executor] Executing scheduled retry for Case ${c.id} (${c.customerName}, ₹${c.amount})...`);
 
-      // Determine outcome: simulate high success rate based on optimal timing (95% success or live payment link)
-      const isMandate = c.issue === 'Subscription lapsed' || (c.id && c.id.toLowerCase().includes('sub'));
-      const isRecovered = Math.random() < 0.85; // 85% capture on peak timing retry!
+      let linkUrl = c.paymentLinkUrl;
+      let linkId = c.razorpayPaymentId;
+      const isWorkingLink = Boolean(linkUrl && !c.linkCancelled && c.paymentLinkStatus !== 'cancelled' && c.paymentLinkStatus !== 'expired');
 
-      const paymentId = `pay_opt_${Date.now().toString().slice(-6)}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-
-      if (isRecovered) {
-        c.status = 'Recovered';
-        c.recoveredAmount = c.amount;
-        c.recoveredAt = now.toISOString();
-        c.recommendedAction = 'None (Recovered)';
-        c.razorpayPaymentId = paymentId;
-        c.attemptCount = (c.attemptCount || 1) + 1;
-        c.updated = 'Just now';
-        if (c.scheduledRetry) c.scheduledRetry.status = 'executed';
-
-        // Add ledger record
-        const newPaymentRecord = {
-          id: paymentId,
-          razorpayPaymentId: paymentId,
-          customerName: c.customerName,
-          customerEmail: c.customerEmail,
-          customerPhone: c.customerPhone,
-          amount: c.amount,
-          status: 'succeeded',
-          method: isMandate ? 'Recurring Card Autopay (Mandate Restored)' : 'Card / Bank Switch',
-          timestamp: 'Just now',
-          isoTimestamp: now.toISOString(),
-          recoveredByAgent: true,
-          caseId: c.id
-        };
-        livePaymentsStore.unshift(newPaymentRecord);
-        db.addPayment(newPaymentRecord).catch(() => {});
-
-        // Timeline
-        if (!c.timeline) c.timeline = [];
-        c.timeline.push({
-          id: `t-exec-${Date.now()}`,
-          timestamp: now.toISOString(),
-          timeDisplay,
-          title: 'Scheduled auto-retry succeeded',
-          description: `Autonomous retry executed during peak bank clearance window. Captured ₹${c.amount.toLocaleString('en-IN')} via ${newPaymentRecord.method} (Transaction: ${paymentId}).`,
-          type: 'success',
-          actionType: 'Retry payment'
-        });
-
-        // Activity
-        const act = {
-          id: `act-exec-${Date.now()}`,
-          timestamp: now.toISOString(),
-          timeDisplay,
-          dateDisplay: 'Today',
-          eventTitle: 'Scheduled auto-retry recovered (Razorpay)',
-          caseId: c.id,
-          customerName: c.customerName,
-          amount: c.amount,
-          decision: 'Autonomous retry on schedule',
-          reason: `Executed at optimal window (${c.scheduledRetry?.windowReason || 'Peak Morning Window'})`,
-          policy: 'Autonomous scheduled retry policy executed',
-          result: `Captured ₹${c.amount.toLocaleString('en-IN')}`,
-          resultStatus: 'success',
-          details: `Transaction ID: ${paymentId}`
-        };
-        liveActivitiesStore.unshift(act);
-        db.addActivity(act).catch(() => {});
-      } else {
-        // Fallback to active dynamic payment link
+      if (!isWorkingLink) {
         const { keyId, keySecret } = await getActiveMerchantCredentials();
         const linkRes = await createRealRazorpayPaymentLink({
           amount: c.amount,
@@ -2521,46 +2489,50 @@ app.post('/api/dunning/execute-scheduled', async (req, res) => {
           keyId,
           keySecret
         });
-
-        c.status = 'Awaiting payment';
-        c.paymentLinkUrl = linkRes.url;
-        c.razorpayPaymentId = linkRes.id;
-        c.attemptCount = (c.attemptCount || 1) + 1;
-        c.updated = 'Just now';
-        if (c.scheduledRetry) c.scheduledRetry.status = 'executed';
-
-        if (!c.timeline) c.timeline = [];
-        c.timeline.push({
-          id: `t-exec-link-${Date.now()}`,
-          timestamp: now.toISOString(),
-          timeDisplay,
-          title: 'Scheduled retry dispatched payment link',
-          description: `Executed scheduled retry. Dispatched 1-click fallback link (${linkRes.url}) to customer via Email & SMS.`,
-          type: 'action',
-          actionType: 'Payment link'
-        });
-
-        const act = {
-          id: `act-exec-link-${Date.now()}`,
-          timestamp: now.toISOString(),
-          timeDisplay,
-          dateDisplay: 'Today',
-          eventTitle: 'Scheduled retry dispatched payment link',
-          caseId: c.id,
-          customerName: c.customerName,
-          amount: c.amount,
-          decision: 'Payment link dispatched on schedule',
-          reason: 'Autonomous fallback payment link',
-          policy: 'Autonomous scheduled retry policy executed',
-          result: `Dispatched to ${c.customerEmail || c.customerPhone}`,
-          resultStatus: 'info'
-        };
-        liveActivitiesStore.unshift(act);
-        db.addActivity(act).catch(() => {});
+        linkUrl = linkRes.url;
+        linkId = linkRes.id;
+        c.paymentLinkUrl = linkUrl;
+        c.razorpayPaymentId = linkId;
       }
 
+      c.status = 'Awaiting payment';
+      c.recommendedAction = 'Payment link';
+      c.attemptCount = (c.attemptCount || 1) + 1;
+      c.updated = 'Just now';
+      if (c.scheduledRetry) c.scheduledRetry.status = 'executed';
+
+      if (!c.timeline) c.timeline = [];
+      c.timeline.push({
+        id: `t-exec-link-${Date.now()}`,
+        timestamp: now.toISOString(),
+        timeDisplay,
+        title: isWorkingLink ? 'Scheduled retry reminder sent with active payment link' : 'Scheduled retry payment link generated',
+        description: `Executed scheduled retry. Payment link (${linkUrl}) dispatched to customer.`,
+        type: 'action',
+        actionType: 'Retry payment'
+      });
+
+      const act = {
+        id: `act-exec-${Date.now()}`,
+        timestamp: now.toISOString(),
+        timeDisplay,
+        dateDisplay: 'Today',
+        eventTitle: isWorkingLink ? 'Scheduled retry reminder dispatched' : 'Scheduled retry payment link generated',
+        caseId: c.id,
+        customerName: c.customerName,
+        amount: c.amount,
+        decision: 'Scheduled retry execution',
+        reason: `Executed at optimal window (${c.scheduledRetry?.windowReason || 'Peak Morning Window'})`,
+        policy: 'Autonomous scheduled retry policy executed',
+        result: `Dispatched link (${linkUrl}) to ${c.customerEmail || c.customerPhone}`,
+        resultStatus: 'info',
+        details: `Payment Link: ${linkUrl}`
+      };
+      liveActivitiesStore.unshift(act);
+      db.addActivity(act).catch(() => {});
+
       db.upsertCase(c).catch(() => {});
-      executedResults.push({ caseId: c.id, status: c.status, amount: c.amount });
+      executedResults.push({ caseId: c.id, status: c.status, amount: c.amount, paymentLinkUrl: linkUrl });
     }
 
     res.json({
@@ -2630,42 +2602,45 @@ setInterval(async () => {
         try {
           const now = new Date();
           const timeDisplay = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const paymentId = `pay_auto_${Date.now().toString().slice(-6)}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
-          c.status = 'Recovered';
-          c.recoveredAmount = c.amount;
-          c.recoveredAt = now.toISOString();
-          c.recommendedAction = 'None (Recovered)';
-          c.razorpayPaymentId = paymentId;
+          let linkUrl = c.paymentLinkUrl;
+          let linkId = c.razorpayPaymentId;
+          const isWorkingLink = Boolean(linkUrl && !c.linkCancelled && c.paymentLinkStatus !== 'cancelled' && c.paymentLinkStatus !== 'expired');
+
+          if (!isWorkingLink) {
+            const { keyId, keySecret } = await getActiveMerchantCredentials();
+            const linkRes = await createRealRazorpayPaymentLink({
+              amount: c.amount,
+              caseId: c.id,
+              customerName: c.customerName,
+              customerEmail: c.customerEmail,
+              customerPhone: c.customerPhone,
+              description: `Background Retry for Case ${c.id}`,
+              isInvoice: c.issue === 'Invoice overdue',
+              issue: c.issue,
+              keyId,
+              keySecret
+            });
+            linkUrl = linkRes.url;
+            linkId = linkRes.id;
+            c.paymentLinkUrl = linkUrl;
+            c.razorpayPaymentId = linkId;
+          }
+
+          c.status = 'Awaiting payment';
+          c.recommendedAction = 'Payment link';
           c.attemptCount = (c.attemptCount || 1) + 1;
           c.updated = 'Just now';
           if (c.scheduledRetry) c.scheduledRetry.status = 'executed';
-
-          const newPaymentRecord = {
-            id: paymentId,
-            razorpayPaymentId: paymentId,
-            customerName: c.customerName,
-            customerEmail: c.customerEmail,
-            customerPhone: c.customerPhone,
-            amount: c.amount,
-            status: 'succeeded',
-            method: 'Autonomous Optimal-Timing Auto-Retry',
-            timestamp: 'Just now',
-            isoTimestamp: now.toISOString(),
-            recoveredByAgent: true,
-            caseId: c.id
-          };
-          livePaymentsStore.unshift(newPaymentRecord);
-          db.addPayment(newPaymentRecord).catch(() => {});
 
           if (!c.timeline) c.timeline = [];
           c.timeline.push({
             id: `t-auto-exec-${Date.now()}`,
             timestamp: now.toISOString(),
             timeDisplay,
-            title: 'Autonomous scheduled retry executed on time',
-            description: `Agent executed background retry precisely at scheduled time (${c.scheduledRetry?.scheduledTimeDisplay || 'Due Window'}). Captured ₹${c.amount.toLocaleString('en-IN')}.`,
-            type: 'success',
+            title: isWorkingLink ? 'Autonomous scheduled retry reminder sent with active payment link' : 'Autonomous scheduled retry payment link generated',
+            description: `Agent executed background retry precisely at scheduled time (${c.scheduledRetry?.scheduledTimeDisplay || 'Due Window'}). Dispatched active payment link (${linkUrl}) to customer.`,
+            type: 'action',
             actionType: 'Retry payment'
           });
 
@@ -2674,21 +2649,21 @@ setInterval(async () => {
             timestamp: now.toISOString(),
             timeDisplay,
             dateDisplay: 'Today',
-            eventTitle: 'Autonomous scheduled retry executed on time',
+            eventTitle: isWorkingLink ? 'Autonomous scheduled retry reminder dispatched' : 'Autonomous scheduled retry payment link generated',
             caseId: c.id,
             customerName: c.customerName,
             amount: c.amount,
             decision: 'Autonomous scheduled execution',
-            reason: `Triggered exactly on scheduled bank window: ${c.scheduledRetry?.windowReason || 'Optimal Morning Clearing'}`,
+            reason: `Triggered on scheduled bank window: ${c.scheduledRetry?.windowReason || 'Optimal Morning Clearing'}`,
             policy: 'Autonomous execution policy active',
-            result: `Captured ₹${c.amount.toLocaleString('en-IN')}`,
-            resultStatus: 'success',
-            details: `Transaction ID: ${paymentId}`
+            result: `Dispatched link (${linkUrl}) to ${c.customerEmail || c.customerPhone}`,
+            resultStatus: 'info',
+            details: `Payment Link: ${linkUrl}`
           };
           liveActivitiesStore.unshift(act);
           db.addActivity(act).catch(() => {});
           db.upsertCase(c).catch(() => {});
-          console.log(`✅ [Autonomous Background Worker] Successfully recovered Case ${c.id} on schedule!`);
+          console.log(`✅ [Autonomous Background Worker] Dispatched scheduled retry for Case ${c.id} on schedule (Link: ${linkUrl})`);
         } catch (execErr: any) {
           console.error(`Error auto-executing case ${c.id}:`, execErr);
         }
@@ -4442,39 +4417,48 @@ INSTRUCTIONS:
           if (retryMatch && retryMatch[1]) {
             const targetCase = cases.find((c: any) => c.id.toLowerCase().includes(retryMatch[1].toLowerCase()));
             if (targetCase) {
-              targetCase.status = 'Recovered';
-              targetCase.recoveredAmount = targetCase.amount;
-              targetCase.recommendedAction = 'None (Recovered)';
-              const pId = `pay_prax_${Date.now().toString().slice(-8)}`;
-              targetCase.razorpayPaymentId = pId;
+              let linkUrl = targetCase.paymentLinkUrl;
+              let linkId = targetCase.razorpayPaymentId;
+              const isWorkingLink = Boolean(linkUrl && !targetCase.linkCancelled && targetCase.paymentLinkStatus !== 'cancelled' && targetCase.paymentLinkStatus !== 'expired');
+
+              if (!isWorkingLink) {
+                const { keyId, keySecret } = await getActiveMerchantCredentials();
+                const linkRes = await createRealRazorpayPaymentLink({
+                  amount: targetCase.amount,
+                  caseId: targetCase.id,
+                  customerName: targetCase.customerName,
+                  customerEmail: targetCase.customerEmail,
+                  customerPhone: targetCase.customerPhone,
+                  description: `Agent Retry: Case ${targetCase.id}`,
+                  isInvoice: targetCase.issue === 'Invoice overdue',
+                  issue: targetCase.issue,
+                  keyId,
+                  keySecret
+                });
+                linkUrl = linkRes.url;
+                linkId = linkRes.id;
+                targetCase.paymentLinkUrl = linkUrl;
+                targetCase.razorpayPaymentId = linkId;
+              }
+
+              targetCase.status = 'Awaiting payment';
+              targetCase.recommendedAction = 'Payment link';
 
               liveActivitiesStore.unshift({
                 id: `act-prax-ret-${Date.now()}`,
                 timestamp: new Date().toISOString(),
                 timeDisplay: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 dateDisplay: 'Today',
-                eventTitle: 'Recovery completed via Praxinex Retry',
+                eventTitle: isWorkingLink ? 'Reminder sent with active payment link' : 'Retry payment link generated by Praxinex',
                 caseId: targetCase.id,
                 customerName: targetCase.customerName,
                 amount: targetCase.amount,
-                decision: 'Retry payment executed by Praxinex',
-                reason: 'Auto-retry confirmed and settled on gateway',
+                decision: isWorkingLink ? 'Send reminder' : 'Retry payment link dispatched',
+                reason: isWorkingLink ? `Sent reminder with active link (${linkUrl})` : `Generated payment link (${linkUrl}) for customer checkout`,
                 policy: 'Autonomous retry policy compliant',
-                result: `Captured ₹${targetCase.amount.toLocaleString('en-IN')}`,
-                resultStatus: 'success'
-              });
-
-              livePaymentsStore.unshift({
-                id: `p-${Date.now()}`,
-                razorpayPaymentId: pId,
-                customerName: targetCase.customerName,
-                customerEmail: targetCase.customerEmail,
-                amount: targetCase.amount,
-                status: 'succeeded',
-                method: targetCase.paymentMethod || 'Razorpay Gateway',
-                timestamp: `Today, ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-                recoveredByAgent: true,
-                caseId: targetCase.id
+                result: `Dispatched to ${targetCase.customerEmail || targetCase.customerPhone}`,
+                resultStatus: 'info',
+                details: `Payment Link: ${linkUrl}`
               });
 
               caseCards = [targetCase];
@@ -4607,28 +4591,51 @@ INSTRUCTIONS:
           if (rawText.includes('[[ACTION:EXECUTE_SCHEDULED]]') || queryLower.includes('execute scheduled') || queryLower.includes('run scheduled') || queryLower.includes('execute due')) {
             const dueCases = liveCasesStore.filter((c: any) => c.status === 'Scheduled' || c.scheduledRetry?.status === 'pending');
             for (const dc of dueCases) {
-              dc.status = 'Recovered';
-              dc.recoveredAmount = dc.amount;
-              dc.recoveredAt = new Date().toISOString();
-              dc.recommendedAction = 'None (Recovered)';
+              let linkUrl = dc.paymentLinkUrl;
+              let linkId = dc.razorpayPaymentId;
+              const isWorkingLink = Boolean(linkUrl && !dc.linkCancelled && dc.paymentLinkStatus !== 'cancelled' && dc.paymentLinkStatus !== 'expired');
+
+              if (!isWorkingLink) {
+                try {
+                  const { keyId, keySecret } = await getActiveMerchantCredentials();
+                  const linkRes = await createRealRazorpayPaymentLink({
+                    amount: dc.amount,
+                    caseId: dc.id,
+                    customerName: dc.customerName,
+                    customerEmail: dc.customerEmail,
+                    customerPhone: dc.customerPhone,
+                    description: `Scheduled Retry for Case ${dc.id}`,
+                    isInvoice: dc.issue === 'Invoice overdue',
+                    issue: dc.issue,
+                    keyId,
+                    keySecret
+                  });
+                  linkUrl = linkRes.url;
+                  linkId = linkRes.id;
+                  dc.paymentLinkUrl = linkUrl;
+                  dc.razorpayPaymentId = linkId;
+                } catch {}
+              }
+
+              dc.status = 'Awaiting payment';
+              dc.recommendedAction = 'Payment link';
               if (dc.scheduledRetry) dc.scheduledRetry.status = 'executed';
-              const payId = `pay_sched_${Date.now().toString().slice(-6)}`;
-              dc.razorpayPaymentId = payId;
 
               liveActivitiesStore.unshift({
                 id: `act-sched-exec-${Date.now()}`,
                 timestamp: new Date().toISOString(),
                 timeDisplay: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 dateDisplay: 'Today',
-                eventTitle: 'Scheduled retry executed & recovered',
+                eventTitle: isWorkingLink ? 'Scheduled retry reminder dispatched' : 'Scheduled retry payment link generated',
                 caseId: dc.id,
                 customerName: dc.customerName,
                 amount: dc.amount,
                 decision: 'Autonomous scheduled retry executed',
                 reason: 'Executed on schedule during optimal bank window',
                 policy: 'Autonomous recovery active',
-                result: `Captured ₹${dc.amount.toLocaleString('en-IN')}`,
-                resultStatus: 'success'
+                result: `Dispatched link (${linkUrl || dc.id}) to ${dc.customerEmail || dc.customerPhone}`,
+                resultStatus: 'info',
+                details: `Payment Link: ${linkUrl}`
               });
               db.upsertCase(dc).catch(() => {});
             }

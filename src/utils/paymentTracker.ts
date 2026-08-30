@@ -61,7 +61,7 @@ export function createCustomerAndStartPaymentTrack(customAmount?: number): Payme
   const customerId = `CUST-${randomSuffix}`;
   const cartId = `CART-${randomSuffix}`;
   const paymentLinkId = `plink_TV${randomSuffix.toLowerCase()}`;
-  const paymentLinkUrl = `https://rzp.io/rzp/${randomSuffix.slice(0, 7)}`;
+  const paymentLinkUrl = `/pay/${paymentLinkId}`;
   const now = new Date().toISOString();
 
   const initialStep: PaymentTimelineStep = {

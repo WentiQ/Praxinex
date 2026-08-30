@@ -292,28 +292,31 @@ export const ActionExecutionModal: React.FC<ActionExecutionModalProps> = ({
         ]
       };
     } else {
-      // Dynamic Payment Link
-      const generatedUrl = actionResult?.linkUrl || caseItem.paymentLinkUrl || `https://rzp.io/i/live_${Date.now().toString().slice(-6)}`;
+      // Dynamic Payment Link Overwriting
+      const generatedUrl = actionResult?.paymentLinkUrl || actionResult?.linkUrl || caseItem.paymentLinkUrl;
+      const generatedId = actionResult?.razorpayPaymentId || actionResult?.linkId || actionResult?.simulatedPaymentId || caseItem.razorpayPaymentId;
+      const newTimelineEntry = {
+        id: `t-link-ui-${Date.now()}`,
+        timestamp: now.toISOString(),
+        timeDisplay,
+        title: 'Dynamic payment link dispatched',
+        description: `Dispatched 1-click dynamic recovery link (${generatedUrl}) to ${selectedChannels.join(' & ')} (${caseItem.customerEmail || caseItem.customerPhone}).`,
+        type: 'action' as const,
+        actionType: 'Payment link'
+      };
+
       updatedCase = {
         ...caseItem,
         status: 'Awaiting payment',
         recommendedAction: 'Payment link',
         paymentLinkUrl: generatedUrl,
-        razorpayPaymentId: actionResult?.linkId || caseItem.razorpayPaymentId,
+        razorpayPaymentId: generatedId,
         channelStatuses: actionResult?.channelStatuses,
         updated: 'Just now',
         attemptCount: caseItem.attemptCount + 1,
         timeline: [
-          ...caseItem.timeline,
-          {
-            id: `t-link-ui-${Date.now()}`,
-            timestamp: now.toISOString(),
-            timeDisplay,
-            title: 'Dynamic payment link dispatched',
-            description: `Dispatched 1-click dynamic recovery link (${generatedUrl}) to ${selectedChannels.join(' & ')} (${caseItem.customerEmail || caseItem.customerPhone}).`,
-            type: 'action',
-            actionType: 'Payment link'
-          }
+          ...(caseItem.timeline || []),
+          newTimelineEntry
         ]
       };
     }
@@ -322,7 +325,7 @@ export const ActionExecutionModal: React.FC<ActionExecutionModalProps> = ({
     onClose();
   };
 
-  const liveLinkUrl = actionResult?.linkUrl || (actionMode === 'mandate_repair' ? caseItem.mandateRepair?.repairUrl : caseItem.paymentLinkUrl);
+  const liveLinkUrl = actionResult?.paymentLinkUrl || actionResult?.linkUrl || (actionMode === 'mandate_repair' ? caseItem.mandateRepair?.repairUrl : caseItem.paymentLinkUrl);
 
   const executionSteps = actionMode === 'scheduled_retry' ? [
     { title: 'Validating bank clearing profile...', detail: `${optimalTiming.bankName} clearing telemetry analyzed` },
