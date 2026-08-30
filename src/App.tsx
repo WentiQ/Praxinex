@@ -12,6 +12,7 @@ import { IntegrationsView } from './components/IntegrationsView';
 import { SettingsView } from './components/SettingsView';
 import { PraxinexView } from './components/PraxinexView';
 import { PraxinexChat } from './components/PraxinexChat';
+import { ScheduledActionsView } from './components/ScheduledActionsView';
 import { CaseDetailModal } from './components/CaseDetailModal';
 import { ActionExecutionModal } from './components/ActionExecutionModal';
 import { SimulateFailureModal } from './components/SimulateFailureModal';
@@ -153,7 +154,9 @@ export default function App() {
       const email = cs.customerEmail.toLowerCase().trim();
       const existing = map.get(email) || {
         id: `cust_${cs.id}`,
-        name: cs.customerName || 'Customer',
+        name: (cs.customerName && !cs.customerName.toLowerCase().startsWith('customer') && !cs.customerName.toLowerCase().startsWith('subscriber') && cs.customerName !== 'Valued Customer')
+          ? cs.customerName
+          : (cs.customerEmail && cs.customerEmail.includes('@') ? cs.customerEmail.split('@')[0].split(/[\._\-]+/).map(s=>s.charAt(0).toUpperCase()+s.slice(1).toLowerCase()).join(' ') : 'Valued Client'),
         email: cs.customerEmail || 'finance@merchant.in',
         phone: cs.customerPhone || '+91 98765 43210',
         totalSpent: 0,
@@ -271,10 +274,98 @@ export default function App() {
         const newPayments = Array.isArray(realPayments) ? realPayments : [];
         const newActivities = Array.isArray(realActivities) ? realActivities : [];
 
-        setCases(syncedCases);
-        try {
-          localStorage.setItem('recovery_cases_cache', JSON.stringify(syncedCases));
-        } catch {}
+        // Merge synced cases with local state - PRESERVE diagnosis data that the server already merged
+        // The server-side sync already preserves llmDiagnosis, scheduledRetry etc. from DB.
+        // But we also preserve any local-state fields the server doesn't know about yet.
+        setCases(prev => {
+          const localMap = new Map<string, any>();
+          prev.forEach(c => { if (c.id) localMap.set(c.id, c); });
+
+          const merged = syncedCases.map((sc: any) => {
+            const local = localMap.get(sc.id);
+            if (!local) return sc;
+
+            // Preserve all AI diagnosis fields unconditionally from whichever source has the latest/populated data
+            const diagSource = (local.lastDiagnosedAt && (!sc.lastDiagnosedAt || new Date(local.lastDiagnosedAt).getTime() >= new Date(sc.lastDiagnosedAt).getTime())) ? local : sc;
+            const fallbackSource = (diagSource === local) ? sc : local;
+
+            const mergedCase: any = {
+              ...sc,
+              llmDiagnosis: diagSource.llmDiagnosis || fallbackSource.llmDiagnosis,
+              aiWhy: diagSource.aiWhy || fallbackSource.aiWhy || (diagSource.llmDiagnosis?.merchantExplanation),
+              recommendedAction: diagSource.recommendedAction || fallbackSource.recommendedAction || (diagSource.llmDiagnosis?.recommendedAction) || sc.recommendedAction,
+              recoveryProbability: diagSource.recoveryProbability || fallbackSource.recoveryProbability || (diagSource.llmDiagnosis?.recoveryProbability) || sc.recoveryProbability,
+              priorityRank: diagSource.priorityRank || fallbackSource.priorityRank || (diagSource.llmDiagnosis?.priorityRank) || sc.priorityRank,
+              rootCauseCategory: diagSource.rootCauseCategory || fallbackSource.rootCauseCategory || (diagSource.llmDiagnosis?.rootCauseCategory) || sc.rootCauseCategory,
+              rootCauseSubCategory: diagSource.rootCauseSubCategory || fallbackSource.rootCauseSubCategory || (diagSource.llmDiagnosis?.rootCauseSubCategory) || sc.rootCauseSubCategory,
+              scoringBreakdown: diagSource.scoringBreakdown || fallbackSource.scoringBreakdown,
+              responseWindowHours: diagSource.responseWindowHours || fallbackSource.responseWindowHours || (diagSource.llmDiagnosis?.responseWindowHours) || sc.responseWindowHours,
+              responseWindowDeadline: diagSource.responseWindowDeadline || fallbackSource.responseWindowDeadline || (diagSource.llmDiagnosis?.responseWindowDeadline) || sc.responseWindowDeadline,
+              lastDiagnosedAt: diagSource.lastDiagnosedAt || fallbackSource.lastDiagnosedAt || sc.lastDiagnosedAt
+            };
+
+            // Always preserve scheduledRetry from whichever source has it
+            if (local.scheduledRetry && local.scheduledRetry.status === 'pending') {
+              mergedCase.scheduledRetry = local.scheduledRetry;
+              if (local.status === 'Scheduled') mergedCase.status = 'Scheduled';
+            } else if (sc.scheduledRetry) {
+              mergedCase.scheduledRetry = sc.scheduledRetry;
+            }
+
+            // Merge timelines - prioritize local timeline as base so custom simulation events & AI diagnosis steps are never reset
+            const serverTimeline: any[] = Array.isArray(sc.timeline)
+              ? sc.timeline.filter((t: any) => t && !(typeof t.title === 'string' && t.title.includes('AI strategy evaluated')))
+              : [];
+            const localTimeline: any[] = Array.isArray(local.timeline)
+              ? local.timeline.filter((t: any) => t && !(typeof t.title === 'string' && t.title.includes('AI strategy evaluated')))
+              : [];
+            const timelineMap = new Map<string, any>();
+            const seen = new Set<string>();
+
+            // 1. Start with local timeline as base
+            localTimeline.forEach(t => {
+              if (!t) return;
+              const key = t.id || `${t.type}:${t.title}:${t.timeDisplay}`;
+              if (!seen.has(key)) {
+                seen.add(key);
+                timelineMap.set(key, t);
+              }
+            });
+
+            // 2. Append new server-side timeline entries if not already present
+            serverTimeline.forEach(t => {
+              if (!t) return;
+              const key = t.id || `${t.type}:${t.title}:${t.timeDisplay}`;
+              const alreadyExists = Array.from(timelineMap.values()).some(
+                e => e.id === t.id || (e.type === t.type && e.title === t.title && Math.abs(
+                  new Date(e.timestamp || 0).getTime() - new Date(t.timestamp || 0).getTime()
+                ) < 120000)
+              );
+              if (!seen.has(key) && !alreadyExists) {
+                seen.add(key);
+                timelineMap.set(key, t);
+              }
+            });
+
+            mergedCase.timeline = Array.from(timelineMap.values()).sort(
+              (a: any, b: any) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime()
+            );
+
+            return mergedCase;
+          });
+
+          // Also include any local cases not present in the sync result (e.g. non-Razorpay cases)
+          prev.forEach(lc => {
+            if (!merged.find((mc: any) => mc.id === lc.id)) {
+              merged.push(lc);
+            }
+          });
+
+          try {
+            localStorage.setItem('recovery_cases_cache', JSON.stringify(merged));
+          } catch {}
+          return merged;
+        });
 
         setSyncedCustomers(newCustomers);
         setPayments(newPayments);
@@ -348,9 +439,52 @@ export default function App() {
       syncLiveRazorpayData(false);
     }, 30000);
 
+    // Fast background sync for live diagnosed cases from backend SQLite database
+    const casesPollInterval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/cases');
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted && data?.cases && Array.isArray(data.cases)) {
+            setCases(prev => {
+              const localMap = new Map<string, any>();
+              prev.forEach(c => { if (c.id) localMap.set(c.id, c); });
+
+              return data.cases.map((sc: any) => {
+                const local = localMap.get(sc.id);
+                if (!local) return sc;
+
+                const diagSource = (local.lastDiagnosedAt && (!sc.lastDiagnosedAt || new Date(local.lastDiagnosedAt).getTime() > new Date(sc.lastDiagnosedAt).getTime())) ? local : sc;
+                const fallbackSource = (diagSource === local) ? sc : local;
+
+                const merged: any = {
+                  ...sc,
+                  llmDiagnosis: diagSource.llmDiagnosis || fallbackSource.llmDiagnosis,
+                  aiWhy: diagSource.aiWhy || fallbackSource.aiWhy || (diagSource.llmDiagnosis?.merchantExplanation),
+                  recommendedAction: diagSource.recommendedAction || fallbackSource.recommendedAction || (diagSource.llmDiagnosis?.recommendedAction) || sc.recommendedAction,
+                  recoveryProbability: diagSource.recoveryProbability || fallbackSource.recoveryProbability || (diagSource.llmDiagnosis?.recoveryProbability) || sc.recoveryProbability,
+                  priorityRank: diagSource.priorityRank || fallbackSource.priorityRank || (diagSource.llmDiagnosis?.priorityRank) || sc.priorityRank,
+                  rootCauseCategory: diagSource.rootCauseCategory || fallbackSource.rootCauseCategory || (diagSource.llmDiagnosis?.rootCauseCategory) || sc.rootCauseCategory,
+                  rootCauseSubCategory: diagSource.rootCauseSubCategory || fallbackSource.rootCauseSubCategory || (diagSource.llmDiagnosis?.rootCauseSubCategory) || sc.rootCauseSubCategory,
+                  scoringBreakdown: diagSource.scoringBreakdown || fallbackSource.scoringBreakdown,
+                  responseWindowHours: diagSource.responseWindowHours || fallbackSource.responseWindowHours || (diagSource.llmDiagnosis?.responseWindowHours) || sc.responseWindowHours,
+                  responseWindowDeadline: diagSource.responseWindowDeadline || fallbackSource.responseWindowDeadline || (diagSource.llmDiagnosis?.responseWindowDeadline) || sc.responseWindowDeadline,
+                  lastDiagnosedAt: diagSource.lastDiagnosedAt || fallbackSource.lastDiagnosedAt || sc.lastDiagnosedAt,
+                  timeline: (Array.isArray(sc.timeline) && sc.timeline.length > 0) ? sc.timeline : local.timeline
+                };
+
+                return merged;
+              });
+            });
+          }
+        }
+      } catch {}
+    }, 4000);
+
     return () => {
       isMounted = false;
       clearInterval(interval);
+      clearInterval(casesPollInterval);
     };
   }, [syncLiveRazorpayData]);
 
@@ -358,6 +492,7 @@ export default function App() {
   const totalAtRisk = cases.reduce((sum, c) => sum + (c.status !== 'Recovered' ? c.amount : 0), 0);
   const totalRecovered = cases.reduce((sum, c) => sum + (c.status === 'Recovered' ? (c.recoveredAmount || c.amount) : 0), 0);
   const activeCasesCount = cases.filter(c => c.status !== 'Recovered').length;
+  const scheduledCount = cases.filter(c => c.status !== 'Recovered' && c.scheduledRetry?.status !== 'executed').length;
   const recoveryRate = Math.round((totalRecovered / ((totalRecovered + totalAtRisk) || 1)) * 100);
   const casesAnalyzed = cases.length;
   const actionsExecuted = activities.length || (cases.filter(c => c.status === 'Recovered').length + 5);
@@ -440,6 +575,21 @@ export default function App() {
   const handleAddSimulatedCase = (newCase: RecoveryCase) => {
     setCases(prev => [newCase, ...prev]);
     setSelectedCase(newCase);
+
+    // Auto-trigger LLM Re-diagnose endpoint immediately for newly added recovery case
+    fetch('/api/agent/diagnose-case', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId: newCase.id, caseItem: newCase })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data?.case) {
+          setCases(prev => prev.map(c => c.id === data.case.id ? { ...c, ...data.case } : c));
+          setSelectedCase(prev => prev?.id === data.case.id ? { ...prev, ...data.case } : prev);
+        }
+      })
+      .catch(() => {});
   };
 
   const handleOpenCaseById = useCallback(async (caseId: string) => {
@@ -522,6 +672,8 @@ export default function App() {
         return { title: 'Praxinex AI Agent', subtitle: 'Autonomous omniscient platform copilot & execution engine' };
       case 'cases':
         return { title: 'Recovery Cases', subtitle: 'Detailed view of cases requiring recovery action' };
+      case 'scheduled':
+        return { title: 'Scheduled Actions by Agent', subtitle: 'Autonomous execution queue ordered by next upcoming schedule' };
       case 'payments':
         return { title: 'Payment Ledger', subtitle: 'Historical transactions and Razorpay gateway captures' };
       case 'customers':
@@ -550,6 +702,7 @@ export default function App() {
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
         activeCaseCount={activeCasesCount}
+        scheduledCount={scheduledCount}
         merchant={merchant}
         onOpenSettings={() => setCurrentTab('settings')}
         onOpenPraxinexCopilot={() => setIsPraxinexChatOpen(true)}
@@ -615,6 +768,14 @@ export default function App() {
             />
           )}
 
+          {currentTab === 'scheduled' && (
+            <ScheduledActionsView
+              cases={cases}
+              onOpenCase={handleOpenCase}
+              onExecuteAction={handleStartExecuteAction}
+            />
+          )}
+
           {currentTab === 'payments' && (
             <PaymentsView
               payments={payments}
@@ -635,12 +796,14 @@ export default function App() {
           {currentTab === 'activity' && (
             <ActivityView
               activities={activities}
+              cases={cases}
               onOpenCaseId={handleOpenCaseById}
             />
           )}
 
           {currentTab === 'analytics' && (
             <AnalyticsView
+              cases={cases}
               totalRecovered={totalRecovered}
               totalAtRisk={totalAtRisk}
               recoveryRate={recoveryRate}
@@ -721,6 +884,23 @@ export default function App() {
         isOpen={!!selectedCase && !executingCase}
         onClose={() => setSelectedCase(null)}
         onExecuteAction={handleStartExecuteAction}
+        onCaseUpdated={(updated) => {
+          setCases(prev => {
+            const nextCases = prev.map(c => c.id === updated.id ? { ...c, ...updated } : c);
+            try {
+              localStorage.setItem('recovery_cases_cache', JSON.stringify(nextCases));
+            } catch {}
+            return nextCases;
+          });
+          setSelectedCase(prev => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
+          try {
+            fetch('/api/cases', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(updated)
+            }).catch(() => {});
+          } catch {}
+        }}
       />
 
       {/* Multi-step Financial Action Execution Modal */}

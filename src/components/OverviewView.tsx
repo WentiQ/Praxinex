@@ -24,6 +24,8 @@ import {
 } from 'recharts';
 import { RecoveryCase } from '../types';
 import { formatINR, formatCaseTimeAgo } from '../utils/formatters';
+import { normalizeFailureCode } from '../utils/aiDiagnosisEngine';
+import { Cpu, UserCheck } from 'lucide-react';
 
 interface OverviewViewProps {
   cases: RecoveryCase[];
@@ -54,38 +56,19 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   onViewAllCases,
   onExecuteAction
 }) => {
-  const getCaseLastUpdatedTime = (c: RecoveryCase): number => {
-    let latestMs = 0;
-
-    // 1. Scan entire timeline to find the most recent event timestamp
-    if (Array.isArray(c.timeline) && c.timeline.length > 0) {
-      c.timeline.forEach((t) => {
-        if (t && t.timestamp) {
-          const ms = new Date(t.timestamp).getTime();
-          if (!isNaN(ms) && ms > latestMs) {
-            latestMs = ms;
-          }
-        }
-      });
-    }
-
-    // 2. Fallbacks: recoveredAt, createdAt
-    if (c.recoveredAt) {
-      const ms = new Date(c.recoveredAt).getTime();
-      if (!isNaN(ms) && ms > latestMs) latestMs = ms;
-    }
-
-    if (c.createdAt) {
-      const ms = new Date(c.createdAt).getTime();
-      if (!isNaN(ms) && ms > latestMs) latestMs = ms;
-    }
-
-    return latestMs;
+  const getCaseExpectedRecovery = (c: RecoveryCase): number => {
+    if (c.expectedRecoveryValue !== undefined) return c.expectedRecoveryValue;
+    const prob = c.recoveryProbability || 75;
+    return Math.round(c.amount * (prob / 100));
   };
 
-  // Top critical cases sorted by latest updated first
+  // Top critical cases prioritized by expected recoverable revenue
   const displayCases = [...cases]
-    .sort((a, b) => getCaseLastUpdatedTime(b) - getCaseLastUpdatedTime(a))
+    .sort((a, b) => {
+      if (a.status === 'Recovered' && b.status !== 'Recovered') return 1;
+      if (a.status !== 'Recovered' && b.status === 'Recovered') return -1;
+      return getCaseExpectedRecovery(b) - getCaseExpectedRecovery(a);
+    })
     .slice(0, 6);
 
   return (
@@ -364,6 +347,9 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                 const isRecovered = c.status === 'Recovered';
                 const isNeedsReview = c.status === 'Needs review';
                 const isAwaiting = c.status === 'Awaiting payment';
+                const normalized = normalizeFailureCode(c.failureCode, c.failureReason, c.issue);
+                const cat = c.rootCauseCategory || normalized.category;
+                const expVal = getCaseExpectedRecovery(c);
 
                 return (
                   <tr
@@ -375,14 +361,23 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                     {/* Customer */}
                     <td className="py-3.5 px-5 font-medium text-[#171717]">
                       <div>
-                        <span className="font-semibold text-neutral-900 group-hover:text-black">
-                          {c.customerName}
-                        </span>
-                        {c.companyName && (
-                          <span className="block text-[11px] text-[#737373] font-normal">
-                            {c.companyName}
+                        <div className="flex items-center space-x-1.5">
+                          <span className="font-semibold text-neutral-900 group-hover:text-black">
+                            {c.customerName}
                           </span>
-                        )}
+                          <span className={`text-[9px] font-semibold px-1.5 py-0.2 rounded border inline-flex items-center ${
+                            cat === 'Technical'
+                              ? 'bg-blue-50 text-blue-800 border-blue-200'
+                              : cat === 'Fraud'
+                              ? 'bg-rose-50 text-rose-800 border-rose-200'
+                              : 'bg-purple-50 text-purple-800 border-purple-200'
+                          }`}>
+                            {cat}
+                          </span>
+                        </div>
+                        <span className="block text-[11px] text-[#737373] font-normal">
+                          {c.companyName || c.customerEmail}
+                        </span>
                       </div>
                     </td>
 
@@ -393,9 +388,18 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                       </span>
                     </td>
 
-                    {/* Amount */}
-                    <td className="py-3.5 px-4 font-mono font-medium text-[#171717]">
-                      {formatINR(c.amount)}
+                    {/* Amount & Expected Salvage */}
+                    <td className="py-3.5 px-4 font-mono">
+                      <div>
+                        <span className="font-bold text-[#171717] block">
+                          {formatINR(c.amount)}
+                        </span>
+                        {!isRecovered && (
+                          <span className="text-[10px] text-blue-700 font-semibold block">
+                            Exp: {formatINR(expVal)}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Risk Badge */}

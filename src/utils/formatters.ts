@@ -103,3 +103,101 @@ export function formatTimelineDateTime(timestamp?: string, fallback?: string): s
   }
 }
 
+/**
+ * Formats any timing value, ISO string, or relative descriptor into an EXACT Date and Time string (e.g. "Aug 31, 2026, 09:30 AM")
+ * Never returns conversational statements or fuzzy phrases like "Early morning" or "Immediate dispatch".
+ */
+export function formatExactTiming(timingValue?: string | null, caseItem?: any): string {
+  const now = new Date();
+  
+  // 1. If caseItem has explicit scheduledRetry.scheduledAt
+  if (caseItem?.scheduledRetry?.scheduledAt) {
+    const d = new Date(caseItem.scheduledRetry.scheduledAt);
+    if (!isNaN(d.getTime())) {
+      return formatDateTimeString(d);
+    }
+  }
+
+  // 2. If caseItem has explicit responseWindowDeadline
+  if (caseItem?.responseWindowDeadline) {
+    const d = new Date(caseItem.responseWindowDeadline);
+    if (!isNaN(d.getTime())) {
+      return formatDateTimeString(d);
+    }
+  }
+
+  // 3. If timingValue is passed and is already a valid parseable date
+  if (timingValue && !isNaN(new Date(timingValue).getTime()) && timingValue.length >= 10 && (timingValue.includes('-') || timingValue.includes('/') || timingValue.includes(','))) {
+    return formatDateTimeString(new Date(timingValue));
+  }
+
+  // 4. If timingValue contains identifiable time strings (e.g. "09:30 AM", "10:00 AM", "15m", etc.)
+  if (timingValue) {
+    const lower = timingValue.toLowerCase();
+    if (lower.includes('15m') || lower.includes('15 min')) {
+      return formatDateTimeString(new Date(now.getTime() + 15 * 60 * 1000));
+    }
+    if (lower.includes('45m') || lower.includes('45 min')) {
+      return formatDateTimeString(new Date(now.getTime() + 45 * 60 * 1000));
+    }
+    if (lower.includes('5-10m') || lower.includes('10m')) {
+      return formatDateTimeString(new Date(now.getTime() + 10 * 60 * 1000));
+    }
+    if (lower.includes('1 hour') || lower.includes('1h')) {
+      return formatDateTimeString(new Date(now.getTime() + 60 * 60 * 1000));
+    }
+    if (lower.includes('09:30 am') || lower.includes('9:30 am') || lower.includes('morning')) {
+      const d = new Date(now.getTime());
+      d.setHours(9, 30, 0, 0);
+      if (d.getTime() <= now.getTime()) d.setDate(d.getDate() + 1);
+      return formatDateTimeString(d);
+    }
+    if (lower.includes('10:00 am')) {
+      const d = new Date(now.getTime());
+      d.setHours(10, 0, 0, 0);
+      if (d.getTime() <= now.getTime()) d.setDate(d.getDate() + 1);
+      return formatDateTimeString(d);
+    }
+    if (lower.includes('11:00 am')) {
+      const d = new Date(now.getTime());
+      d.setHours(11, 0, 0, 0);
+      if (d.getTime() <= now.getTime()) d.setDate(d.getDate() + 1);
+      return formatDateTimeString(d);
+    }
+    if (lower.includes('immediate') || lower.includes('instant')) {
+      return formatDateTimeString(new Date(now.getTime() + 2 * 60 * 1000));
+    }
+  }
+
+  // 5. Fallback based on recommended action
+  const action = (caseItem?.recommendedAction || caseItem?.llmDiagnosis?.recommendedAction || '').toLowerCase();
+  if (action.includes('schedule')) {
+    const d = new Date(now.getTime());
+    d.setHours(9, 30, 0, 0);
+    if (d.getTime() <= now.getTime()) d.setDate(d.getDate() + 1);
+    return formatDateTimeString(d);
+  }
+  if (action.includes('retry')) {
+    return formatDateTimeString(new Date(now.getTime() + 15 * 60 * 1000));
+  }
+  if (action.includes('escalat')) {
+    return formatDateTimeString(new Date(now.getTime() + 2 * 3600 * 1000));
+  }
+
+  // Default: +24 hours
+  const hours = caseItem?.responseWindowHours || caseItem?.llmDiagnosis?.responseWindowHours || 24;
+  return formatDateTimeString(new Date(now.getTime() + hours * 3600 * 1000));
+}
+
+function formatDateTimeString(d: Date): string {
+  return d.toLocaleString('en-IN', {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+}
+
+

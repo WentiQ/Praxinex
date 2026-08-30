@@ -9,6 +9,7 @@ export interface DBStore {
   merchant: any | null;
   policies: any | null;
   autoTrafficState: any | null;
+  mostRecentCaseId: string | null;
   cases: any[];
   customers: any[];
   activities: any[];
@@ -30,6 +31,7 @@ class DatabaseManager {
     merchant: null,
     policies: null,
     autoTrafficState: null,
+    mostRecentCaseId: null,
     cases: [],
     customers: [],
     activities: [],
@@ -81,6 +83,7 @@ class DatabaseManager {
           merchant: parsed.merchant || null,
           policies: parsed.policies || null,
           autoTrafficState: parsed.autoTrafficState || null,
+          mostRecentCaseId: parsed.mostRecentCaseId || null,
           cases: Array.isArray(parsed.cases) ? parsed.cases : [],
           customers: Array.isArray(parsed.customers) ? parsed.customers : [],
           activities: Array.isArray(parsed.activities) ? parsed.activities : [],
@@ -96,7 +99,6 @@ class DatabaseManager {
   }
 
   private persistLocalStore() {
-    if (this.isSupabaseActive) return; // No disk writes when Supabase is active
     try {
       fs.writeFileSync(LOCAL_STORE_PATH, JSON.stringify(this.localCache, null, 2), 'utf-8');
     } catch (err: any) {
@@ -215,6 +217,38 @@ class DatabaseManager {
         });
       } catch (err: any) {
         console.warn('Supabase auto_traffic_state upsert error:', err.message);
+      }
+    }
+  }
+
+  // --- Recency Sentinel Persistence ---
+  async getMostRecentCaseId(): Promise<string | null> {
+    if (this.isSupabaseActive && this.supabase) {
+      try {
+        const { data, error } = await this.supabase
+          .from('merchant_settings')
+          .select('*')
+          .eq('id', 'most_recent_case_id')
+          .single();
+        if (data && !error && data.profile?.caseId) return data.profile.caseId;
+      } catch {}
+    }
+    return this.localCache.mostRecentCaseId || null;
+  }
+
+  async saveMostRecentCaseId(caseId: string): Promise<void> {
+    this.localCache.mostRecentCaseId = caseId;
+    this.persistLocalStore();
+
+    if (this.isSupabaseActive && this.supabase) {
+      try {
+        await this.supabase.from('merchant_settings').upsert({
+          id: 'most_recent_case_id',
+          profile: { caseId, updatedAt: new Date().toISOString() },
+          updated_at: new Date().toISOString()
+        });
+      } catch (err: any) {
+        console.warn('Supabase most_recent_case_id upsert error:', err.message);
       }
     }
   }

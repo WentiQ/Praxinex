@@ -15,7 +15,9 @@ import {
   Maximize2, 
   Minimize2,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Clock,
+  Zap
 } from 'lucide-react';
 import { RecoveryCase, MerchantProfile, ActiveTab, PraxinexMessage, PraxinexAction } from '../types';
 import { formatINR } from '../utils/formatters';
@@ -35,12 +37,12 @@ interface PraxinexChatProps {
 }
 
 const DEFAULT_PROMPTS = [
-  'What is our total revenue at risk?',
+  'Schedule optimal-timing retry for pending cases',
+  'Repair mandate for lapsed subscriptions',
   'Generate payment link for Dinesh',
-  'Show all high risk cases',
-  'Why did case RC-SUB-1082 fail?',
-  'Sync data with Razorpay',
-  'Go to Payments ledger'
+  'Run all due scheduled retries now',
+  'What is our total revenue at risk?',
+  'Why did case RC-SUB-1082 fail?'
 ];
 
 export const PraxinexChat: React.FC<PraxinexChatProps> = ({
@@ -330,7 +332,10 @@ export const PraxinexChat: React.FC<PraxinexChatProps> = ({
                       <div className="text-[11px] font-mono text-blue-900 bg-white p-2 rounded border border-blue-100 truncate">
                         {msg.paymentLinkCard.url}
                       </div>
-                      <div className="flex items-center justify-end space-x-2 pt-1">
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[10px] text-blue-700 font-mono">
+                          Dispatched via Email & SMS
+                        </span>
                         <a
                           href={msg.paymentLinkCard.url}
                           target="_blank"
@@ -340,6 +345,80 @@ export const PraxinexChat: React.FC<PraxinexChatProps> = ({
                           <span>Open Link</span>
                           <ExternalLink className="w-3 h-3" />
                         </a>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Mandate Repair Card */}
+                  {msg.mandateRepairCard && (
+                    <div className="mt-3 p-3 bg-emerald-50/80 border border-emerald-200 rounded-lg space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-1.5">
+                          <CreditCard className="w-3.5 h-3.5 text-emerald-700" />
+                          <span className="text-[10px] font-mono uppercase font-bold text-emerald-800">
+                            Subscription Mandate Repair (Card Autopay)
+                          </span>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-emerald-950">{formatINR(msg.mandateRepairCard.amount)}</span>
+                      </div>
+                      <p className="text-[11px] text-emerald-900 leading-snug">
+                        {msg.mandateRepairCard.instructions || 'Customer can update recurring debit/credit card without re-subscribing.'}
+                      </p>
+                      <div className="text-[11px] font-mono text-emerald-900 bg-white p-2 rounded border border-emerald-200 truncate">
+                        {msg.mandateRepairCard.repairUrl}
+                      </div>
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[10px] text-emerald-700 font-mono">
+                          Card network update active
+                        </span>
+                        <a
+                          href={msg.mandateRepairCard.repairUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center space-x-1 px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-medium transition-colors shadow-2xs"
+                        >
+                          <span>Open Repair Link</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Scheduled Retry Card */}
+                  {msg.scheduledRetryCard && (
+                    <div className="mt-3 p-3 bg-purple-50/80 border border-purple-200 rounded-lg space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-1.5">
+                          <Clock className="w-3.5 h-3.5 text-purple-700" />
+                          <span className="text-[10px] font-mono uppercase font-bold text-purple-800">
+                            Optimal Bank Window Scheduled
+                          </span>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-purple-900 bg-purple-100 px-1.5 py-0.5 rounded">
+                          {msg.scheduledRetryCard.peakSuccessRate}% Peak Rate
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-purple-900 leading-snug">
+                        {msg.scheduledRetryCard.windowReason}
+                      </p>
+                      <div className="flex items-center justify-between pt-1 text-[11px]">
+                        <span className="text-purple-700 font-mono font-semibold">
+                          Target: {msg.scheduledRetryCard.scheduledAt}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            fetch('/api/dunning/execute-scheduled', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ caseId: msg.scheduledRetryCard?.caseId })
+                            }).then(() => onSyncGateway());
+                          }}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1 bg-purple-700 hover:bg-purple-800 text-white rounded text-xs font-medium cursor-pointer shadow-2xs"
+                        >
+                          <Zap className="w-3 h-3 fill-current text-amber-300" />
+                          <span>Run Now</span>
+                        </button>
                       </div>
                     </div>
                   )}

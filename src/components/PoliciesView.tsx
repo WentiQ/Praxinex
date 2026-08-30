@@ -111,7 +111,7 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
             </div>
 
             {/* Minimum time between retries */}
-            <div className="flex items-center justify-between py-2">
+            <div className="flex items-center justify-between py-2 border-b border-[#F4F4F5]">
               <div>
                 <span className="font-semibold text-neutral-900 block">Minimum time between retries</span>
                 <span className="text-[#737373] text-[11px]">
@@ -130,6 +130,44 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
                 <span className="text-neutral-500 font-mono text-[11px]">hours</span>
               </div>
             </div>
+
+            {/* Smart Timing Auto-Execution */}
+            <div className="flex items-center justify-between py-2 border-b border-[#F4F4F5]">
+              <div>
+                <span className="font-semibold text-neutral-900 block">Intelligent Bank Timing Auto-Execution</span>
+                <span className="text-[#737373] text-[11px]">
+                  Automatically schedules and executes retries when bank success rates are statistically highest (09:00 - 11:30 AM & salary dates).
+                </span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.smartTimingAutoExecute}
+                  onChange={(e) => handleChange('smartTimingAutoExecute', e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-10 h-5 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#171717]"></div>
+              </label>
+            </div>
+
+            {/* Subscription Mandate Auto-Repair */}
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <span className="font-semibold text-neutral-900 block">Auto Subscription Mandate Repair</span>
+                <span className="text-[#737373] text-[11px]">
+                  Generates dedicated card mandate repair links for lapsed subscriptions (switches cards without re-subscribing).
+                </span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.autoMandateRepairForSubscriptions}
+                  onChange={(e) => handleChange('autoMandateRepairForSubscriptions', e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-10 h-5 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#171717]"></div>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -137,10 +175,48 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
         <div className="bg-white border border-[#E7E7E7] rounded-xl p-6 space-y-5">
           <div className="flex items-center space-x-2 border-b border-[#EAEAEA] pb-3">
             <Mail className="w-4 h-4 text-neutral-700" />
-            <h3 className="text-sm font-semibold text-[#171717]">Customer communication</h3>
+            <h3 className="text-sm font-semibold text-[#171717]">Multi-Channel Communication</h3>
           </div>
 
           <div className="space-y-4 text-xs">
+            {/* Email Channel Toggle */}
+            <div className="flex items-center justify-between py-2 border-b border-[#F4F4F5]">
+              <div>
+                <span className="font-semibold text-neutral-900 block">Email Notifications (SMTP)</span>
+                <span className="text-[#737373] text-[11px]">
+                  Dispatches polite, context-aware recovery emails with 1-click links.
+                </span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.emailEnabled}
+                  onChange={(e) => handleChange('emailEnabled', e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-10 h-5 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#171717]"></div>
+              </label>
+            </div>
+
+            {/* SMS Channel Toggle */}
+            <div className="flex items-center justify-between py-2 border-b border-[#F4F4F5]">
+              <div>
+                <span className="font-semibold text-neutral-900 block">SMS (DLT Telecom Route)</span>
+                <span className="text-[#737373] text-[11px]">
+                  Dispatches concise 160-character DLT compliant recovery SMS alerts.
+                </span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.smsEnabled}
+                  onChange={(e) => handleChange('smsEnabled', e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-10 h-5 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#171717]"></div>
+              </label>
+            </div>
+
             {/* Automatic reminders */}
             <div className="flex items-center justify-between py-2 border-b border-[#F4F4F5]">
               <div>

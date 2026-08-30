@@ -11,7 +11,8 @@ import {
   Settings,
   ChevronRight,
   Sparkles,
-  Layers
+  Layers,
+  Clock
 } from 'lucide-react';
 import { MerchantProfile } from '../types';
 
@@ -19,6 +20,7 @@ export type NavigationTab =
   | 'overview' 
   | 'praxinex'
   | 'cases' 
+  | 'scheduled'
   | 'payments' 
   | 'customers' 
   | 'activity' 
@@ -31,6 +33,7 @@ interface SidebarProps {
   currentTab: NavigationTab;
   onSelectTab: (tab: NavigationTab) => void;
   activeCaseCount: number;
+  scheduledCount?: number;
   merchant: MerchantProfile;
   onOpenSettings: () => void;
   onOpenPraxinexCopilot?: () => void;
@@ -42,6 +45,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentTab,
   onSelectTab,
   activeCaseCount,
+  scheduledCount = 0,
   merchant,
   onOpenSettings,
   onOpenPraxinexCopilot,
@@ -52,6 +56,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'overview' as NavigationTab, label: 'Overview', icon: LayoutDashboard },
     { id: 'praxinex' as NavigationTab, label: 'Praxinex AI', icon: Sparkles, isAi: true },
     { id: 'cases' as NavigationTab, label: 'Recovery Cases', icon: ShieldAlert, badge: activeCaseCount },
+    { id: 'scheduled' as NavigationTab, label: 'Scheduled Actions', icon: Clock, badge: scheduledCount, isScheduled: true },
     { id: 'payments' as NavigationTab, label: 'Payments', icon: CreditCard },
     { id: 'customers' as NavigationTab, label: 'Customers', icon: Users },
     { id: 'activity' as NavigationTab, label: 'Activity', icon: Activity },
@@ -144,6 +149,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     className={`text-[10px] font-mono font-medium px-1.5 py-0.2 rounded-full ${
                       isActive
                         ? 'bg-neutral-800 text-neutral-200'
+                        : (item as any).isScheduled
+                        ? 'bg-purple-100 text-purple-800 border border-purple-200'
                         : 'bg-amber-100 text-amber-800 border border-amber-200'
                     }`}
                   >

@@ -10,8 +10,9 @@ export type RecommendedAction =
   | 'Retry payment' 
   | 'Payment link' 
   | 'Send reminder' 
-  | 'Escalate' 
-  | 'Schedule retry';
+  | 'Mandate repair'
+  | 'Schedule retry'
+  | 'Escalate';
 
 export type CaseStatus = 
   | 'Recovered' 
@@ -21,14 +22,90 @@ export type CaseStatus =
   | 'Scheduled' 
   | 'Failed';
 
+export type CommunicationChannel = 'email' | 'sms';
+
+export interface ChannelDeliveryStatus {
+  channel: CommunicationChannel;
+  status: 'pending' | 'sent' | 'delivered' | 'opened' | 'failed';
+  timestamp: string;
+  recipient: string;
+  details?: string;
+}
+
+export interface PersonalizedMessageCopy {
+  channel: CommunicationChannel;
+  subject?: string; // For Email
+  heading?: string;
+  body: string;
+  ctaText: string;
+  ctaUrl: string;
+  tone: 'polite_reassuring' | 'urgent_polite' | 'vip_executive';
+  reassuranceNote?: string;
+}
+
+export interface ScheduledRetryInfo {
+  scheduledAt: string; // ISO String
+  scheduledTimeDisplay: string;
+  bankName?: string;
+  peakSuccessRate: number; // e.g. 94.2
+  windowReason: string;
+  status: 'pending' | 'executing' | 'executed' | 'cancelled';
+  autoExecute: boolean;
+}
+
+export interface MandateRepairInfo {
+  mandateId?: string;
+  subscriptionId?: string;
+  repairUrl: string;
+  cardNetworkSupported: string[];
+  expiresAt: string;
+  customerInstructions: string;
+}
+
 export interface TimelineEvent {
   id: string;
   timestamp: string;
   timeDisplay: string;
   title: string;
   description: string;
-  type: 'failure' | 'detection' | 'diagnosis' | 'action' | 'success' | 'escalation';
+  type: 'failure' | 'detection' | 'diagnosis' | 'action' | 'success' | 'escalation' | 'scheduled';
   actionType?: string;
+  channel?: CommunicationChannel;
+}
+
+export type RootCauseCategory = 'Technical' | 'Behavioral' | 'Fraud';
+export type PriorityRank = 'Critical Priority' | 'High Priority' | 'Medium Priority' | 'Low Priority';
+
+export interface NormalizedErrorInfo {
+  code: string;
+  category: RootCauseCategory;
+  subCategory: string;
+  merchantExplanation: string;
+  customerExplanation: string;
+  recommendedAction: RecommendedAction;
+  optimalTimeWindow: string;
+  isTransient: boolean;
+}
+
+export interface ScoringFactor {
+  name: string;
+  weight: number;
+  description: string;
+  valueDisplay: string;
+}
+
+export interface ScoringBreakdown {
+  baseScore: number;
+  historicalSuccessRateFactor: number;
+  ltvFactor: number;
+  amountAndFrequencyFactor: number;
+  failureReasonFactor: number;
+  timeElapsedDecay: number;
+  attemptPenalty: number;
+  finalScore: number;
+  expectedRecoveryValue: number;
+  priorityRank: PriorityRank;
+  factors: ScoringFactor[];
 }
 
 export interface RecoveryCase {
@@ -59,6 +136,41 @@ export interface RecoveryCase {
   recoveredAmount?: number;
   recoveredAt?: string;
   paymentLinkUrl?: string;
+  rootCauseCategory?: RootCauseCategory;
+  rootCauseSubCategory?: string;
+  normalizedError?: NormalizedErrorInfo;
+  scoringBreakdown?: ScoringBreakdown;
+  expectedRecoveryValue?: number;
+  priorityRank?: PriorityRank;
+  // Multi-Channel Smart Dunning & Scheduled Execution Extensions
+  scheduledRetry?: ScheduledRetryInfo;
+  mandateRepair?: MandateRepairInfo;
+  channelStatuses?: ChannelDeliveryStatus[];
+  lastMessageCopy?: PersonalizedMessageCopy[];
+  // Dynamic Response Window & LLM Diagnosis Extensions
+  responseWindowHours?: number;
+  responseWindowDeadline?: string;
+  lastDiagnosedAt?: string;
+  timelineUpdatedAt?: string;
+  llmDiagnosis?: LLMDiagnosisResult;
+}
+
+export interface LLMDiagnosisResult {
+  merchantExplanation: string;
+  customerExplanation: string;
+  recommendedAction: RecommendedAction;
+  optimalTimeWindow: string;
+  optimalWindowReason?: string;
+  scheduledAt?: string | null;
+  scheduledTimeDisplay?: string | null;
+  nextScheduleTiming?: string;
+  responseWindowHours: number;
+  responseWindowDeadline?: string;
+  priorityRank: PriorityRank;
+  recoveryProbability: number;
+  rootCauseCategory?: RootCauseCategory;
+  rootCauseSubCategory?: string;
+  diagnosedAt: string;
 }
 
 export interface ActivityEvent {
@@ -76,6 +188,12 @@ export interface ActivityEvent {
   result: string;
   resultStatus: 'success' | 'info' | 'warning' | 'critical';
   details?: string;
+  channel?: CommunicationChannel;
+  type?: string;
+  action?: string;
+  description?: string;
+  recoveryProbability?: number;
+  status?: string;
 }
 
 export interface RecoveryPolicy {
@@ -88,6 +206,11 @@ export interface RecoveryPolicy {
   escalateAfterFailedAttempts: number;
   requireApprovalForHighRisk: boolean;
   highRiskThresholdAmount: number;
+  // Smart Dunning Multi-Channel & Mandate Rules
+  emailEnabled: boolean;
+  smsEnabled: boolean;
+  smartTimingAutoExecute: boolean;
+  autoMandateRepairForSubscriptions: boolean;
 }
 
 export interface MerchantProfile {
@@ -153,7 +276,19 @@ export type ActiveTab =
 
 export interface PraxinexAction {
   id: string;
-  type: 'generate_payment_link' | 'navigate' | 'open_case' | 'sync_data' | 'escalate_case' | 'retry_charge' | 'retry_payment' | 'send_reminder' | 'escalate';
+  type: 
+    | 'generate_payment_link' 
+    | 'navigate' 
+    | 'open_case' 
+    | 'sync_data' 
+    | 'escalate_case' 
+    | 'retry_charge' 
+    | 'retry_payment' 
+    | 'send_reminder' 
+    | 'schedule_retry'
+    | 'repair_mandate'
+    | 'execute_scheduled_now'
+    | 'escalate';
   label: string;
   payload?: any;
   status?: 'pending' | 'executed' | 'failed';
@@ -174,6 +309,22 @@ export interface PraxinexMessage {
     amount: number;
     customerName: string;
     description: string;
+    channels?: CommunicationChannel[];
+  };
+  mandateRepairCard?: {
+    id: string;
+    repairUrl: string;
+    customerName: string;
+    subscriptionId: string;
+    amount: number;
+    instructions: string;
+  };
+  scheduledRetryCard?: {
+    caseId: string;
+    customerName: string;
+    scheduledAt: string;
+    peakSuccessRate: number;
+    windowReason: string;
   };
   metricsHighlight?: {
     revenueAtRisk: number;

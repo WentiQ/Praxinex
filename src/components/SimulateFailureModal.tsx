@@ -389,82 +389,188 @@ export const SimulateFailureModal: React.FC<SimulateFailureModalProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <button
-                  onClick={() => handleQuickGenerate({
-                    issue: 'Payment failed',
-                    amount: 18500,
-                    failureReason: 'Bank switch network timeout during 3DS OTP authorization',
-                    product: 'Enterprise API Gateway'
-                  })}
-                  disabled={isGenerating}
-                  className="p-4 border border-neutral-200 hover:border-neutral-900 rounded-xl text-left transition-all hover:shadow-xs bg-white hover:bg-neutral-50/50 group cursor-pointer"
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-semibold text-xs text-neutral-900 group-hover:text-black">💳 Payment Failed (₹18,500)</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded">Card/UPI Timeout</span>
-                  </div>
-                  <p className="text-[11px] text-neutral-500">
-                    Standard transaction failure with automated 1-click retry payment link dispatch.
-                  </p>
-                </button>
+              {/* Technical Failures */}
+              <div>
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-800 flex items-center space-x-1.5 mb-2">
+                  <span>⚙️ Technical / Network / Bank Downtime (Auto-Retry)</span>
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  <button
+                    onClick={() => handleQuickGenerate({
+                      issue: 'Payment failed',
+                      amount: 18500,
+                      failureCode: 'GATEWAY_ERROR_DEBIT_FAILED',
+                      failureReason: 'Bank switch network timeout during 3DS OTP authorization',
+                      product: 'Enterprise API Gateway'
+                    })}
+                    disabled={isGenerating}
+                    className="p-3.5 border border-blue-200 hover:border-blue-500 rounded-xl text-left transition-all hover:shadow-xs bg-blue-50/30 hover:bg-blue-50/60 group cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-xs text-neutral-900 group-hover:text-blue-950">💳 Bank Switch Latency (₹18,500)</span>
+                      <span className="text-[9px] font-mono px-1.5 py-0.2 bg-blue-100 text-blue-800 rounded font-semibold">Technical</span>
+                    </div>
+                    <p className="text-[11px] text-neutral-500">
+                      <code>GATEWAY_ERROR_DEBIT_FAILED</code> • 92% recovery via background retry.
+                    </p>
+                  </button>
 
-                <button
-                  onClick={() => handleQuickGenerate({
-                    issue: 'Invoice overdue',
-                    amount: 85000,
-                    failureReason: 'Net-30 corporate invoice overdue past scheduled settlement window',
-                    product: 'Autonomous Cluster Annual License'
-                  })}
-                  disabled={isGenerating}
-                  className="p-4 border border-neutral-200 hover:border-neutral-900 rounded-xl text-left transition-all hover:shadow-xs bg-white hover:bg-neutral-50/50 group cursor-pointer"
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-semibold text-xs text-neutral-900">📄 Invoice Overdue (₹85,000)</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded">B2B Net-30</span>
-                  </div>
-                  <p className="text-[11px] text-neutral-500">
-                    Overdue milestone invoice on Razorpay with automated invoice settlement link.
-                  </p>
-                </button>
+                  <button
+                    onClick={() => handleQuickGenerate({
+                      issue: 'Payment failed',
+                      amount: 32000,
+                      failureCode: 'PAYMENT_TIMED_OUT',
+                      failureReason: 'Customer 3DS OTP verification session timed out before submission',
+                      product: 'High-Throughput Node'
+                    })}
+                    disabled={isGenerating}
+                    className="p-3.5 border border-blue-200 hover:border-blue-500 rounded-xl text-left transition-all hover:shadow-xs bg-blue-50/30 hover:bg-blue-50/60 group cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-xs text-neutral-900 group-hover:text-blue-950">⏳ OTP Session Timeout (₹32,000)</span>
+                      <span className="text-[9px] font-mono px-1.5 py-0.2 bg-blue-100 text-blue-800 rounded font-semibold">Technical</span>
+                    </div>
+                    <p className="text-[11px] text-neutral-500">
+                      <code>PAYMENT_TIMED_OUT</code> • Dispatches fresh 1-click payment link.
+                    </p>
+                  </button>
+                </div>
+              </div>
 
-                <button
-                  onClick={() => handleQuickGenerate({
-                    amount: 12000,
-                    issue: 'Subscription lapsed',
-                    failureReason: 'Recurring auto-debit charge rejected by bank (e-mandate / card expired)',
-                    product: 'SaaS Platform Pro Monthly'
-                  })}
-                  disabled={isGenerating}
-                  className="p-4 border border-neutral-200 hover:border-neutral-900 rounded-xl text-left transition-all hover:shadow-xs bg-white hover:bg-neutral-50/50 group cursor-pointer"
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-semibold text-xs text-neutral-900">🔄 Subscription Lapsed (₹12,000)</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded">Autopay Failed</span>
-                  </div>
-                  <p className="text-[11px] text-neutral-500">
-                    Recurring auto-debit mandate dropped. 1-click update link dispatched.
-                  </p>
-                </button>
+              {/* Customer-Side / Behavioral */}
+              <div>
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-purple-800 flex items-center space-x-1.5 mb-2">
+                  <span>👤 Customer-Side / Behavioral (1-Click Links & Timed Outreach)</span>
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  <button
+                    onClick={() => handleQuickGenerate({
+                      issue: 'Payment failed',
+                      amount: 14500,
+                      failureCode: 'INSUFFICIENT_FUNDS',
+                      failureReason: 'Bank declined transaction due to insufficient available balance or card limit',
+                      product: 'SaaS Business Starter'
+                    })}
+                    disabled={isGenerating}
+                    className="p-3.5 border border-purple-200 hover:border-purple-500 rounded-xl text-left transition-all hover:shadow-xs bg-purple-50/30 hover:bg-purple-50/60 group cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-xs text-neutral-900 group-hover:text-purple-950">📉 Insufficient Balance (₹14,500)</span>
+                      <span className="text-[9px] font-mono px-1.5 py-0.2 bg-purple-100 text-purple-800 rounded font-semibold">Behavioral</span>
+                    </div>
+                    <p className="text-[11px] text-neutral-500">
+                      <code>INSUFFICIENT_FUNDS</code> • Scheduled salary/morning window recovery.
+                    </p>
+                  </button>
 
-                <button
-                  onClick={() => handleQuickGenerate({
-                    amount: 24500,
-                    issue: 'Checkout abandoned',
-                    failureReason: 'Customer initiated cart checkout but exited before completing 3DS authorization',
-                    product: 'Cloud Compute Instance Monthly'
-                  })}
-                  disabled={isGenerating}
-                  className="p-4 border border-neutral-200 hover:border-neutral-900 rounded-xl text-left transition-all hover:shadow-xs bg-white hover:bg-neutral-50/50 group cursor-pointer"
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-semibold text-xs text-neutral-900">🛒 Cart Abandoned (₹24,500)</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded">Drop-off</span>
-                  </div>
-                  <p className="text-[11px] text-neutral-500">
-                    Checkout initiated $\rightarrow$ drop-off detected $\rightarrow$ AI recovery dispatched.
-                  </p>
-                </button>
+                  <button
+                    onClick={() => handleQuickGenerate({
+                      amount: 12000,
+                      issue: 'Subscription lapsed',
+                      failureCode: 'EXPIRED_CARD',
+                      failureReason: 'Recurring auto-debit rejected: saved card instrument has expired',
+                      product: 'SaaS Platform Pro Monthly'
+                    })}
+                    disabled={isGenerating}
+                    className="p-3.5 border border-purple-200 hover:border-purple-500 rounded-xl text-left transition-all hover:shadow-xs bg-purple-50/30 hover:bg-purple-50/60 group cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-xs text-neutral-900 group-hover:text-purple-950">🔄 Expired Card Update (₹12,000)</span>
+                      <span className="text-[9px] font-mono px-1.5 py-0.2 bg-purple-100 text-purple-800 rounded font-semibold">Behavioral</span>
+                    </div>
+                    <p className="text-[11px] text-neutral-500">
+                      <code>EXPIRED_CARD</code> • Dispatches 1-click card renewal link.
+                    </p>
+                  </button>
+
+                  <button
+                    onClick={() => handleQuickGenerate({
+                      issue: 'Invoice overdue',
+                      amount: 85000,
+                      failureCode: 'INVOICE_OVERDUE',
+                      failureReason: 'Net-30 corporate invoice overdue past scheduled settlement window',
+                      product: 'Autonomous Cluster Annual License'
+                    })}
+                    disabled={isGenerating}
+                    className="p-3.5 border border-purple-200 hover:border-purple-500 rounded-xl text-left transition-all hover:shadow-xs bg-purple-50/30 hover:bg-purple-50/60 group cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-xs text-neutral-900 group-hover:text-purple-950">📄 Enterprise Overdue (₹85,000)</span>
+                      <span className="text-[9px] font-mono px-1.5 py-0.2 bg-purple-100 text-purple-800 rounded font-semibold">Behavioral</span>
+                    </div>
+                    <p className="text-[11px] text-neutral-500">
+                      <code>INVOICE_OVERDUE</code> • Automated dunning with Razorpay invoice link.
+                    </p>
+                  </button>
+
+                  <button
+                    onClick={() => handleQuickGenerate({
+                      amount: 24500,
+                      issue: 'Checkout abandoned',
+                      failureCode: 'CHECKOUT_ABANDONED',
+                      failureReason: 'Customer initiated cart checkout but exited before completing 3DS authorization',
+                      product: 'Cloud Compute Instance Monthly'
+                    })}
+                    disabled={isGenerating}
+                    className="p-3.5 border border-purple-200 hover:border-purple-500 rounded-xl text-left transition-all hover:shadow-xs bg-purple-50/30 hover:bg-purple-50/60 group cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-xs text-neutral-900 group-hover:text-purple-950">🛒 Cart Abandonment (₹24,500)</span>
+                      <span className="text-[9px] font-mono px-1.5 py-0.2 bg-purple-100 text-purple-800 rounded font-semibold">Behavioral</span>
+                    </div>
+                    <p className="text-[11px] text-neutral-500">
+                      <code>CHECKOUT_ABANDONED</code> • Multi-rail cart recovery link.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Fraud & High-Risk */}
+              <div>
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-rose-800 flex items-center space-x-1.5 mb-2">
+                  <span>🚨 Fraud & High-Risk Anomaly (Escalation / Review)</span>
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  <button
+                    onClick={() => handleQuickGenerate({
+                      issue: 'Payment failed',
+                      amount: 95000,
+                      failureCode: 'VELOCITY_CHECK_FAILED',
+                      failureReason: 'Suspicious velocity spike: 6 rapid failed attempts from same IP/device fingerprint',
+                      product: 'Dedicated High Performance Cluster'
+                    })}
+                    disabled={isGenerating}
+                    className="p-3.5 border border-rose-200 hover:border-rose-500 rounded-xl text-left transition-all hover:shadow-xs bg-rose-50/30 hover:bg-rose-50/60 group cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-xs text-rose-950">⚡ Velocity Spike (₹95,000)</span>
+                      <span className="text-[9px] font-mono px-1.5 py-0.2 bg-rose-100 text-rose-800 rounded font-semibold">Fraud Risk</span>
+                    </div>
+                    <p className="text-[11px] text-neutral-500">
+                      <code>VELOCITY_CHECK_FAILED</code> • Low probability (18%), auto-retry locked.
+                    </p>
+                  </button>
+
+                  <button
+                    onClick={() => handleQuickGenerate({
+                      issue: 'Payment failed',
+                      amount: 150000,
+                      failureCode: 'CHARGEBACK_RISK',
+                      failureReason: 'High dispute risk BIN telemetry detected from unverified geolocation',
+                      product: 'Enterprise Annual Infrastructure'
+                    })}
+                    disabled={isGenerating}
+                    className="p-3.5 border border-rose-200 hover:border-rose-500 rounded-xl text-left transition-all hover:shadow-xs bg-rose-50/30 hover:bg-rose-50/60 group cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-xs text-rose-950">🛡️ Chargeback Risk Flag (₹1,50,000)</span>
+                      <span className="text-[9px] font-mono px-1.5 py-0.2 bg-rose-100 text-rose-800 rounded font-semibold">Fraud Risk</span>
+                    </div>
+                    <p className="text-[11px] text-neutral-500">
+                      <code>CHARGEBACK_RISK</code> • Escalated to compliance team for manual review.
+                    </p>
+                  </button>
+                </div>
               </div>
             </div>
           )}

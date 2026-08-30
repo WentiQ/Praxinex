@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
   BarChart3, 
   TrendingUp, 
@@ -6,22 +6,82 @@ import {
   ShieldCheck, 
   PieChart as PieIcon,
   Layers,
-  ArrowUpRight
+  ArrowUpRight,
+  Cpu,
+  UserCheck,
+  ShieldAlert,
+  Sparkles
 } from 'lucide-react';
 import { FAILURE_CATEGORY_DATA } from '../data/mockData';
+import { RecoveryCase } from '../types';
 import { formatINR } from '../utils/formatters';
+import { normalizeFailureCode } from '../utils/aiDiagnosisEngine';
 
 interface AnalyticsViewProps {
+  cases?: RecoveryCase[];
   totalRecovered: number;
   totalAtRisk: number;
   recoveryRate: number;
 }
 
 export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
+  cases = [],
   totalRecovered,
   totalAtRisk,
   recoveryRate
 }) => {
+  // Compute Dynamic Root-Cause Diagnostics Breakdown
+  const diagnosticData = useMemo(() => {
+    if (!cases || cases.length === 0) {
+      return FAILURE_CATEGORY_DATA;
+    }
+
+    const techCases = cases.filter(c => {
+      const cat = c.rootCauseCategory || normalizeFailureCode(c.failureCode, c.failureReason, c.issue).category;
+      return cat === 'Technical';
+    });
+    const behCases = cases.filter(c => {
+      const cat = c.rootCauseCategory || normalizeFailureCode(c.failureCode, c.failureReason, c.issue).category;
+      return cat === 'Behavioral';
+    });
+    const fraudCases = cases.filter(c => {
+      const cat = c.rootCauseCategory || normalizeFailureCode(c.failureCode, c.failureReason, c.issue).category;
+      return cat === 'Fraud';
+    });
+
+    const total = cases.length;
+    const calcRate = (list: RecoveryCase[]) => {
+      const rec = list.filter(c => c.status === 'Recovered').length;
+      return list.length > 0 ? `${Math.round((rec / list.length) * 100)}%` : '0%';
+    };
+
+    return [
+      {
+        name: 'Technical Network / Bank Downtime',
+        category: 'Technical',
+        count: techCases.length,
+        value: total > 0 ? Math.round((techCases.length / total) * 100) : 0,
+        recoveredRate: calcRate(techCases),
+        desc: 'Bank switch timeout, OTP dropped, gateway latency'
+      },
+      {
+        name: 'Customer-Side / Behavioral',
+        category: 'Behavioral',
+        count: behCases.length,
+        value: total > 0 ? Math.round((behCases.length / total) * 100) : 0,
+        recoveredRate: calcRate(behCases),
+        desc: 'Insufficient funds, expired cards, mandate lapsed'
+      },
+      {
+        name: 'High-Risk / Suspicious Velocity (Fraud)',
+        category: 'Fraud',
+        count: fraudCases.length,
+        value: total > 0 ? Math.round((fraudCases.length / total) * 100) : 0,
+        recoveredRate: calcRate(fraudCases),
+        desc: 'Velocity spikes, chargeback flags, risk review'
+      }
+    ];
+  }, [cases]);
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8" id="analytics-page-container">
       {/* Header Banner */}
@@ -51,11 +111,14 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           </div>
 
           <div className="space-y-4">
-            {FAILURE_CATEGORY_DATA.map((cat, idx) => (
+            {diagnosticData.map((cat: any, idx) => (
               <div key={idx} className="space-y-1.5 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-neutral-800">{cat.name}</span>
-                  <div className="flex items-center space-x-2 font-mono text-[11px]">
+                  <div>
+                    <span className="font-medium text-neutral-900 block">{cat.name}</span>
+                    {cat.desc && <span className="text-[10px] text-neutral-400 block">{cat.desc}</span>}
+                  </div>
+                  <div className="flex items-center space-x-2 font-mono text-[11px] shrink-0">
                     <span className="text-neutral-500">{cat.count} cases ({cat.value}%)</span>
                     <span className="text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
                       {cat.recoveredRate} rec.
@@ -64,8 +127,14 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                 </div>
                 <div className="w-full h-2 bg-neutral-100 rounded-full overflow-hidden">
                   <div 
-                    className="h-full bg-neutral-900 rounded-full transition-all duration-500"
-                    style={{ width: `${cat.value}%` }}
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      cat.category === 'Technical'
+                        ? 'bg-blue-600'
+                        : cat.category === 'Fraud'
+                        ? 'bg-rose-500'
+                        : 'bg-purple-600'
+                    }`}
+                    style={{ width: `${Math.max(4, cat.value)}%` }}
                   />
                 </div>
               </div>

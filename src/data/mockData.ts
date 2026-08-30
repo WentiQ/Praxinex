@@ -27,7 +27,11 @@ export const INITIAL_POLICIES: RecoveryPolicy = {
   reminderIntervalHours: 24,
   escalateAfterFailedAttempts: 2,
   requireApprovalForHighRisk: true,
-  highRiskThresholdAmount: 50000
+  highRiskThresholdAmount: 50000,
+  emailEnabled: true,
+  smsEnabled: true,
+  smartTimingAutoExecute: true,
+  autoMandateRepairForSubscriptions: true
 };
 
 export const INITIAL_CASES: RecoveryCase[] = [];
