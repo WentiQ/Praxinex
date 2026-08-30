@@ -881,7 +881,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
                   <div className="min-w-0 pr-2">
                     <span className="text-[10px] font-mono text-blue-700 block uppercase font-bold">
-                      {caseItem.paymentLinkUrl.includes('invoices.razorpay.com') ? 'Razorpay Invoice Link' : 'Razorpay Live Link'}
+                      {caseItem.paymentLinkUrl.includes('rzp.io') ? 'Razorpay Official Link' : 'Razorpay Live Link'}
                     </span>
                     <span className="text-xs font-mono text-blue-900 truncate block">{caseItem.paymentLinkUrl}</span>
                   </div>

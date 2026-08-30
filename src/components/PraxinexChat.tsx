@@ -325,7 +325,7 @@ export const PraxinexChat: React.FC<PraxinexChatProps> = ({
                     <div className="mt-3 p-3 bg-blue-50/70 border border-blue-200 rounded-lg space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-mono uppercase font-bold text-blue-700">
-                          {msg.paymentLinkCard.url.includes('invoices.razorpay.com') ? 'Razorpay Invoice Link' : 'Razorpay Payment Link'}
+                          {msg.paymentLinkCard.url.includes('rzp.io') ? 'Razorpay Official Link' : 'Razorpay Payment Link'}
                         </span>
                         <span className="text-xs font-mono font-bold text-neutral-900">{formatINR(msg.paymentLinkCard.amount)}</span>
                       </div>

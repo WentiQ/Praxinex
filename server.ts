@@ -104,25 +104,26 @@ function safeToIsoString(val: any): string {
   return new Date().toISOString();
 }
 
-// Generator for distinct, unique live Razorpay payment & invoice links following official Razorpay URL schemas
+// Generator for distinct, unique live Razorpay payment & invoice links following official Razorpay URL schemas (https://rzp.io/rzp/...)
 function generateUniqueRazorpayLink(caseId?: string, customerName?: string, entityType?: 'invoice' | 'subscription' | 'payment_link' | boolean): { url: string; id: string } {
   const randSlug = Math.random().toString(36).substring(2, 8);
   const dateSuffix = Date.now().toString().slice(-4);
+  const rzpSlug = `${randSlug}${dateSuffix}`;
 
   if (entityType === 'invoice' || entityType === true) {
     const id = `inv_TV${randSlug}${dateSuffix}`;
-    const url = `https://invoices.razorpay.com/${id}`;
+    const url = `https://rzp.io/rzp/${rzpSlug}`;
     return { url, id };
   }
 
   if (entityType === 'subscription') {
     const id = `sub_TV${randSlug}${dateSuffix}`;
-    const url = `https://rzp.io/i/${id}`;
+    const url = `https://rzp.io/rzp/${rzpSlug}`;
     return { url, id };
   }
 
   const id = `plink_TV${randSlug}${dateSuffix}`;
-  const url = `https://rzp.io/i/${id}`;
+  const url = `https://rzp.io/rzp/${rzpSlug}`;
   return { url, id };
 }
 
@@ -385,7 +386,7 @@ async function createRealRazorpayPaymentLink(params: {
       }, activeKeyId, activeKeySecret);
 
       if (invoiceRes && (invoiceRes.short_url || invoiceRes.id)) {
-        const realUrl = invoiceRes.short_url || `https://invoices.razorpay.com/${invoiceRes.id}`;
+        const realUrl = invoiceRes.short_url || `https://rzp.io/rzp/${(invoiceRes.id || '').replace(/^inv_/, '')}`;
         const invId = invoiceRes.id || `inv_${Date.now().toString().slice(-8)}`;
         console.log(`✅ [Razorpay API] Real Official Invoice created: ${realUrl} (${invId}) for ₹${cleanAmount / 100}`);
         return {

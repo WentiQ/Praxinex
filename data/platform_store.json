@@ -1,9 +1,545 @@
 {
   "merchant": null,
   "policies": null,
-  "autoTrafficState": null,
-  "mostRecentCaseId": null,
+  "autoTrafficState": {
+    "isRunning": false,
+    "maxDailyCases": 100,
+    "targetCasesToday": 88,
+    "generatedToday": 21,
+    "pacingMode": "fast_demo",
+    "currentDay": "2026-08-30",
+    "totalGeneratedAllTime": 103,
+    "lastGeneratedAt": "2026-08-30T16:49:36.304Z",
+    "nextScheduledAt": ""
+  },
+  "mostRecentCaseId": "RC-INV-iKwk",
   "cases": [
+    {
+      "id": "RC-INV-iKwk",
+      "customerName": "Bertina Ajani",
+      "customerEmail": "bertinaajani@gmail.com",
+      "customerPhone": "+919824243823",
+      "companyName": "Ajani Enterprises",
+      "issue": "Invoice overdue",
+      "amount": 750,
+      "risk": "Medium",
+      "recommendedAction": "Send reminder",
+      "status": "Scheduled",
+      "updated": "30 Aug 2026, 10:20 pm",
+      "createdAt": "2026-08-30T16:50:52.000Z",
+      "failureReason": "Invoice #inv_TW3MmlKtB5iKwk unpaid (Invoice Settlement: INV-3323)",
+      "failureCode": "INVOICE_UNPAID",
+      "paymentMethod": "Razorpay Invoice Portal",
+      "razorpayPaymentId": "inv_TW3MmlKtB5iKwk",
+      "invoiceNumber": "inv_TW3MmlKtB5iKwk",
+      "attemptCount": 1,
+      "maxAttempts": 3,
+      "recoveryProbability": 85,
+      "aiWhy": "The invoice INV-3323 has exceeded the Net-30 settlement window, resulting in an 'Invoice Unpaid' status. This is a standard B2B collection delay, requiring a professional dunning notification to trigger the client's accounts payable workflow.",
+      "aiPolicyNote": "Action complies with the maximum reminder threshold of 3 and escalation criteria for overdue accounts.",
+      "policyAllowed": true,
+      "recoveredAmount": 0,
+      "paymentLinkUrl": "https://rzp.io/rzp/lv2q0Xgv",
+      "timeline": [
+        {
+          "id": "t-sim-1788108568073-1",
+          "timestamp": "2026-08-30T16:47:26.849Z",
+          "timeDisplay": "10:19 pm",
+          "title": "Invoice Issued on Razorpay",
+          "description": "Invoice (INV-3323) issued on Razorpay for ₹750.",
+          "type": "detection"
+        },
+        {
+          "id": "t-sim-1788108568073-2",
+          "timestamp": "2026-08-30T16:48:26.849Z",
+          "timeDisplay": "10:19 pm",
+          "title": "Invoice Overdue / Settlement Pending",
+          "description": "Invoice settlement window elapsed without capture for ₹750.",
+          "type": "failure"
+        },
+        {
+          "id": "t-sim-1788108568073-3",
+          "timestamp": "2026-08-30T16:49:26.849Z",
+          "timeDisplay": "10:19 pm",
+          "title": "Payment Link Generated on Razorpay",
+          "description": "Payment link (inv_TW3MmlKtB5iKwk: https://rzp.io/rzp/lv2q0Xgv) generated on Razorpay for invoice settlement. Sent to bertinaajani@gmail.com.",
+          "type": "action",
+          "actionType": "Payment link"
+        },
+        {
+          "id": "t-diag-1788108576190",
+          "timestamp": "2026-08-30T16:49:26.849Z",
+          "timeDisplay": "10:19 pm",
+          "title": "AI Diagnosis & Decision: Send reminder",
+          "description": "The invoice is past its Net-30 due date, indicating a standard corporate payment delay rather than a technical failure. A professional dunning reminder is the appropriate protocol to trigger settlement from the accounts payable department. [Window: 31 Aug 2026, 09:00 am]",
+          "type": "diagnosis",
+          "actionType": "Send reminder"
+        },
+        {
+          "id": "t-diag-RC-INV-3323-1788108580096",
+          "timestamp": "2026-08-30T16:49:40.096Z",
+          "timeDisplay": "10:19 pm",
+          "title": "AI Root-Cause Diagnosis (Action: Send reminder)",
+          "description": "The transaction failed due to the expiration of the Net-30 settlement window for invoice INV-3323. This is a standard B2B collection delay where the invoice has transitioned to an overdue status, necessitating a formal dunning reminder to trigger the accounts payable workflow. [Optimal Window: Aug 31, 2026, 09:00 AM • Expected Salvage: 85%]",
+          "type": "diagnosis",
+          "actionType": "Send reminder"
+        },
+        {
+          "id": "t-sch-RC-INV-3323",
+          "timestamp": "2026-08-30T16:49:57.862Z",
+          "timeDisplay": "10:19 pm",
+          "title": "Optimal-timing retry scheduled",
+          "description": "Scheduled autonomous background retry for Aug 31, 2026, 09:00 AM (Scheduling for 09:00 AM IST on a Monday morning ensures the payment reminder is at the top of the customer's inbox as they begin their business week, historically yielding higher conversion rates for B2B invoice settlement. - 85% peak rate).",
+          "type": "scheduled",
+          "actionType": "Schedule retry"
+        },
+        {
+          "id": "t-inv-inv_TW3MmlKtB5iKwk",
+          "timestamp": "2026-08-30T16:50:52.000Z",
+          "timeDisplay": "30 Aug 2026, 10:20 pm",
+          "title": "Invoice #inv_TW3MmlKtB5iKwk generated on Razorpay",
+          "description": "Invoice issued for ₹750 (\"Invoice Settlement: INV-3323\"). Customer contact: bertinaajani@gmail.com. Link: https://rzp.io/rzp/lv2q0Xgv",
+          "type": "detection"
+        },
+        {
+          "id": "t-fail-inv_TW3MmlKtB5iKwk",
+          "timestamp": "2026-08-30T17:00:52.000Z",
+          "timeDisplay": "30 Aug 2026, 10:30 pm",
+          "title": "Invoice payment overdue / Settlement pending",
+          "description": "Invoice reached unpaid threshold (Invoice Settlement: INV-3323). Initial checkout window elapsed without capture.",
+          "type": "failure"
+        }
+      ],
+      "llmDiagnosis": {
+        "merchantExplanation": "The invoice INV-3323 has exceeded the Net-30 settlement window, resulting in an 'Invoice Unpaid' status. This is a standard B2B collection delay, requiring a professional dunning notification to trigger the client's accounts payable workflow.",
+        "customerExplanation": "Dear Bertina, we noticed that your recent invoice (INV-3323) for ₹750 remains unpaid. Please note that no duplicate debits have occurred; we kindly request you to complete the payment via the provided link at your earliest convenience to maintain your account status.",
+        "recommendedAction": "Send reminder",
+        "rootCauseCategory": "Behavioral",
+        "rootCauseSubCategory": "Invoice Overdue",
+        "scheduledAt": "2026-08-31T03:30:00.000Z",
+        "scheduledTimeDisplay": "Aug 31, 2026, 09:00 AM",
+        "optimalWindowReason": "Scheduling for 09:00 AM IST on a Monday morning ensures the payment reminder is at the top of the customer's inbox as they begin their business week, historically yielding higher conversion rates for B2B invoice settlement.",
+        "optimalTimeWindow": "Aug 31, 2026, 09:00 AM",
+        "responseWindowHours": 48,
+        "responseWindowDeadline": "2026-09-01T22:49:50.837Z",
+        "priorityRank": "High Priority",
+        "recoveryProbability": 85,
+        "diagnosedAt": "2026-08-30T16:49:57.862Z"
+      },
+      "rootCauseCategory": "Behavioral",
+      "rootCauseSubCategory": "Invoice Overdue",
+      "normalizedError": {
+        "code": "INVOICE_OVERDUE",
+        "category": "Behavioral",
+        "subCategory": "Commercial Invoice Overdue",
+        "merchantExplanation": "Enterprise invoice payment terms elapsed without settlement. Automated dunning dispatch with instant Razorpay corporate settlement link.",
+        "customerExplanation": "Invoice is outstanding past agreed settlement terms. Please arrange wire settlement or click the secure link to pay online.",
+        "recommendedAction": "Send reminder",
+        "optimalTimeWindow": "Standard Corporate Business Hours (11:00 AM)",
+        "isTransient": false
+      },
+      "scoringBreakdown": {
+        "baseScore": 78,
+        "historicalSuccessRateFactor": 0,
+        "ltvFactor": 0,
+        "amountAndFrequencyFactor": 3,
+        "failureReasonFactor": 0,
+        "timeElapsedDecay": 0,
+        "attemptPenalty": 0,
+        "finalScore": 81,
+        "expectedRecoveryValue": 608,
+        "priorityRank": "Medium Priority",
+        "factors": [
+          {
+            "name": "Root Cause (Commercial Invoice Terms)",
+            "weight": 3,
+            "description": "B2B commercial invoices have high eventual capture with active dunning.",
+            "valueDisplay": "78% Baseline"
+          },
+          {
+            "name": "Low-Friction Transaction Amount",
+            "weight": 3,
+            "description": "Micro/low-ticket amounts face near-zero purchase hesitation.",
+            "valueDisplay": "+3% (Low ticket)"
+          },
+          {
+            "name": "Fresh Failure Window (< 1h)",
+            "weight": 0,
+            "description": "Payment addressed immediately during active user session.",
+            "valueDisplay": "0% (Fresh)"
+          }
+        ]
+      },
+      "expectedRecoveryValue": 608,
+      "priorityRank": "High Priority",
+      "lastDiagnosedAt": "2026-08-30T16:49:57.862Z",
+      "scheduledRetry": {
+        "scheduledAt": "2026-08-31T03:30:00.000Z",
+        "scheduledTimeDisplay": "Aug 31, 2026, 09:00 AM",
+        "bankName": "Razorpay Invoice Portal",
+        "peakSuccessRate": 85,
+        "windowReason": "Scheduling for 09:00 AM IST on a Monday morning ensures the payment reminder is at the top of the customer's inbox as they begin their business week, historically yielding higher conversion rates for B2B invoice settlement.",
+        "status": "pending",
+        "autoExecute": true
+      },
+      "responseWindowHours": 48,
+      "responseWindowDeadline": "2026-09-01T22:49:50.837Z"
+    },
+    {
+      "id": "RC-INV-LbOo",
+      "customerName": "Anette Iyer",
+      "customerEmail": "anetteiyer@gmail.com",
+      "customerPhone": "+919897295358",
+      "companyName": "Iyer Enterprises",
+      "issue": "Invoice overdue",
+      "amount": 700,
+      "risk": "Medium",
+      "recommendedAction": "Payment link",
+      "status": "Awaiting payment",
+      "updated": "30 Aug 2026, 06:26 pm",
+      "createdAt": "2026-08-30T12:56:01.000Z",
+      "failureReason": "Invoice #inv_TVzMhNCpYdLbOo unpaid (Invoice Settlement: INV-3753)",
+      "failureCode": "INVOICE_UNPAID",
+      "paymentMethod": "Razorpay Invoice Portal",
+      "razorpayPaymentId": "inv_TVzMhNCpYdLbOo",
+      "invoiceNumber": "inv_TVzMhNCpYdLbOo",
+      "attemptCount": 1,
+      "maxAttempts": 3,
+      "recoveryProbability": 85,
+      "aiWhy": "The invoice remains unpaid because the initial checkout session expired without a completed transaction capture. No automated retries have been triggered yet as the invoice is in its initial grace period.",
+      "aiPolicyNote": "Invoice recovery bounds verified. Autonomous payment link permitted.",
+      "policyAllowed": true,
+      "recoveredAmount": 0,
+      "paymentLinkUrl": "https://rzp.io/rzp/3bUJNc2p",
+      "timeline": [
+        {
+          "id": "t-inv-inv_TVzMhNCpYdLbOo",
+          "type": "detection",
+          "title": "Invoice #inv_TVzMhNCpYdLbOo generated on Razorpay",
+          "timestamp": "2026-08-30T12:56:01.000Z",
+          "description": "Invoice issued for ₹700 (\"Invoice Settlement: INV-3753\"). Customer contact: anetteiyer@gmail.com. Link: https://rzp.io/rzp/3bUJNc2p",
+          "timeDisplay": "30 Aug 2026, 06:26 pm"
+        },
+        {
+          "id": "t-fail-inv_TVzMhNCpYdLbOo",
+          "type": "failure",
+          "title": "Invoice payment overdue / Settlement pending",
+          "timestamp": "2026-08-30T13:06:01.000Z",
+          "description": "Invoice reached unpaid threshold (Invoice Settlement: INV-3753). Initial checkout window elapsed without capture.",
+          "timeDisplay": "30 Aug 2026, 06:36 pm"
+        },
+        {
+          "id": "t-sch-RC-INV-LbOo",
+          "type": "scheduled",
+          "title": "Optimal-timing retry scheduled",
+          "timestamp": "2026-08-30T15:43:34.526Z",
+          "actionType": "Schedule retry",
+          "description": "Scheduled autonomous background retry for Aug 31, 2026, 10:00 AM (Customer is historically active during morning hours. Sending the reminder at 10:00 AM IST ensures the request reaches them at the start of their active day, maximizing the likelihood of immediate settlement while avoiding late-night intrusion. - 85% peak rate).",
+          "timeDisplay": "09:13 pm"
+        },
+        {
+          "id": "t-diag-RC-INV-LbOo-1788104614527",
+          "type": "diagnosis",
+          "title": "AI Root-Cause Diagnosis (Action: Payment link)",
+          "timestamp": "2026-08-30T15:43:34.526Z",
+          "actionType": "Payment link",
+          "description": "The invoice remains unpaid due to the customer failing to complete the checkout process within the initial 10-minute window following generation. No gateway error occurred; this is an abandonment event requiring a direct payment link nudge to facilitate conversion. [Optimal Window: Aug 31, 2026, 10:00 AM • Expected Salvage: 85%]",
+          "timeDisplay": "09:13 pm"
+        },
+        {
+          "id": "t-diag-RC-INV-LbOo-1788106267499",
+          "type": "diagnosis",
+          "title": "AI Root-Cause Diagnosis (Action: Payment link)",
+          "timestamp": "2026-08-30T16:11:07.499Z",
+          "actionType": "Payment link",
+          "description": "The invoice remains unpaid because the initial checkout session expired without a completed transaction capture. No automated retries have been triggered yet as the invoice is in its initial grace period. [Optimal Window: Aug 31, 2026, 02:00 PM • Expected Salvage: 85%]",
+          "timeDisplay": "09:41 pm"
+        },
+        {
+          "id": "t-link-ui-1788108535105",
+          "timestamp": "2026-08-30T16:48:55.105Z",
+          "timeDisplay": "10:18 PM",
+          "title": "Dynamic payment link dispatched",
+          "description": "Dispatched 1-click dynamic recovery link (https://rzp.io/rzp/3bUJNc2p) to email & sms (anetteiyer@gmail.com).",
+          "type": "action",
+          "actionType": "Payment link"
+        }
+      ],
+      "llmDiagnosis": {
+        "diagnosedAt": "2026-08-30T16:11:07.499Z",
+        "scheduledAt": "2026-08-31T08:30:00.000Z",
+        "priorityRank": "Medium Priority",
+        "optimalTimeWindow": "Aug 31, 2026, 02:00 PM",
+        "recommendedAction": "Payment link",
+        "rootCauseCategory": "Behavioral",
+        "customerExplanation": "Hi Anette, it looks like the payment for your recent invoice (INV-3753) didn't go through. Please use the link below to complete the payment securely; rest assured, no previous charges have been processed.",
+        "merchantExplanation": "The invoice remains unpaid because the initial checkout session expired without a completed transaction capture. No automated retries have been triggered yet as the invoice is in its initial grace period.",
+        "optimalWindowReason": "Customer is historically active during evening hours but likely missed the initial checkout window due to timing. Scheduling for the following afternoon increases visibility during the customer's next active browsing session.",
+        "recoveryProbability": 85,
+        "responseWindowHours": 24,
+        "rootCauseSubCategory": "Checkout Session Timeout",
+        "scheduledTimeDisplay": "Aug 31, 2026, 02:00 PM",
+        "responseWindowDeadline": "2026-08-31T16:11:03.113Z"
+      },
+      "rootCauseCategory": "Behavioral",
+      "rootCauseSubCategory": "Checkout Session Timeout",
+      "priorityRank": "Medium Priority",
+      "lastDiagnosedAt": "2026-08-30T16:11:07.499Z",
+      "scheduledRetry": {
+        "status": "pending",
+        "bankName": "Razorpay Invoice Portal",
+        "autoExecute": true,
+        "scheduledAt": "2026-08-31T08:30:00.000Z",
+        "windowReason": "Customer is historically active during evening hours but likely missed the initial checkout window due to timing. Scheduling for the following afternoon increases visibility during the customer's next active browsing session.",
+        "peakSuccessRate": 85,
+        "scheduledTimeDisplay": "Aug 31, 2026, 02:00 PM"
+      },
+      "responseWindowHours": 24,
+      "responseWindowDeadline": "2026-08-31T16:11:03.113Z",
+      "channelStatuses": [
+        {
+          "channel": "email",
+          "status": "delivered",
+          "timestamp": "2026-08-30T16:48:49.472Z",
+          "recipient": "anetteiyer@gmail.com",
+          "details": "Delivered via Transactional SMTP • 256-bit TLS"
+        },
+        {
+          "channel": "sms",
+          "status": "delivered",
+          "timestamp": "2026-08-30T16:48:49.472Z",
+          "recipient": "+919897295358",
+          "details": "Delivered via DLT Telecom Route • Carrier ACK"
+        }
+      ]
+    },
+    {
+      "id": "RC-INV-3232",
+      "risk": "High",
+      "aiWhy": "The invoice INV-3232 reached its settlement deadline without capture due to the expiration of the automated payment window. This is a standard dunning intervention required to prompt the client for a high-value manual settlement via the generated payment link.",
+      "issue": "Invoice overdue",
+      "amount": 98690,
+      "status": "Awaiting payment",
+      "updated": "Just now",
+      "timeline": [
+        {
+          "id": "t-sim-1788107541393-1",
+          "type": "detection",
+          "title": "Invoice Issued on Razorpay",
+          "timestamp": "2026-08-30T16:30:21.286Z",
+          "description": "Invoice (INV-3232) issued on Razorpay for ₹98,690.",
+          "timeDisplay": "10:02 pm"
+        },
+        {
+          "id": "t-sim-1788107541393-2",
+          "type": "failure",
+          "title": "Invoice Overdue / Settlement Pending",
+          "timestamp": "2026-08-30T16:31:21.286Z",
+          "description": "Invoice settlement window elapsed without capture for ₹98,690.",
+          "timeDisplay": "10:02 pm"
+        },
+        {
+          "id": "t-sim-1788107541393-3",
+          "type": "action",
+          "title": "Payment Link Generated on Razorpay",
+          "timestamp": "2026-08-30T16:32:21.286Z",
+          "actionType": "Payment link",
+          "description": "Payment link (inv_TV91pbn51391: https://invoices.razorpay.com/inv_TV91pbn51391) generated on Razorpay for invoice settlement. Sent to erynbekelja@gmail.com.",
+          "timeDisplay": "10:02 pm"
+        },
+        {
+          "id": "t-diag-1788107547035",
+          "type": "diagnosis",
+          "title": "AI Diagnosis & Decision: Send reminder",
+          "timestamp": "2026-08-30T16:32:21.286Z",
+          "actionType": "Send reminder",
+          "description": "The invoice settlement window has elapsed, requiring a formal dunning intervention to prompt the client. This action ensures the enterprise customer is notified immediately while providing a direct path to resolution. [Window: 31 Aug 2026, 10:00 am]",
+          "timeDisplay": "10:02 pm"
+        },
+        {
+          "id": "t-sch-RC-INV-3232",
+          "type": "scheduled",
+          "title": "Optimal-timing retry scheduled",
+          "timestamp": "2026-08-30T16:32:32.151Z",
+          "actionType": "Schedule retry",
+          "description": "Scheduled autonomous background retry for Aug 31, 2026, 10:00 AM (Scheduling the reminder for 10:00 AM IST on a Monday morning captures the customer during typical business startup hours, maximizing engagement probability for high-value B2B invoices. - 85% peak rate).",
+          "timeDisplay": "10:02 pm"
+        },
+        {
+          "id": "t-diag-RC-INV-3232-1788107552151",
+          "type": "diagnosis",
+          "title": "AI Root-Cause Diagnosis (Action: Send reminder)",
+          "timestamp": "2026-08-30T16:32:32.151Z",
+          "actionType": "Send reminder",
+          "description": "The invoice INV-3232 reached its settlement deadline without a successful capture, likely due to the customer missing the initial notification window. The payment link remains valid, but the transaction requires a formal dunning trigger to re-engage the customer and secure the high-value settlement. [Optimal Window: Aug 31, 2026, 10:00 AM • Expected Salvage: 85%]",
+          "timeDisplay": "10:02 pm"
+        },
+        {
+          "id": "t-dun-1788107561877",
+          "type": "action",
+          "title": "Smart dunning payment link dispatched",
+          "channel": "email",
+          "timestamp": "2026-08-30T16:32:41.877Z",
+          "actionType": "Payment link",
+          "description": "Dispatched 1-click dynamic recovery link (https://invoices.razorpay.com/inv_TV91pbn51391) across email & sms. Reassuring personalized copy delivered.",
+          "timeDisplay": "10:02 pm"
+        },
+        {
+          "id": "t-dun-1788108048990",
+          "type": "action",
+          "title": "Smart dunning payment link dispatched",
+          "channel": "email",
+          "timestamp": "2026-08-30T16:40:48.980Z",
+          "actionType": "Payment link",
+          "description": "Dispatched 1-click dynamic recovery link (https://invoices.razorpay.com/inv_TV91pbn51391) across email & sms. Reassuring personalized copy delivered.",
+          "timeDisplay": "10:10 pm"
+        },
+        {
+          "id": "t-dun-1788108105293",
+          "type": "action",
+          "title": "Smart dunning payment link dispatched",
+          "channel": "email",
+          "timestamp": "2026-08-30T16:41:45.289Z",
+          "actionType": "Payment link",
+          "description": "Dispatched 1-click dynamic recovery link (https://invoices.razorpay.com/inv_TV91pbn51391) across email & sms. Reassuring personalized copy delivered.",
+          "timeDisplay": "10:11 pm"
+        },
+        {
+          "id": "t-link-ui-1788108201845",
+          "type": "action",
+          "title": "Dynamic payment link dispatched",
+          "timestamp": "2026-08-30T16:43:21.845Z",
+          "actionType": "Payment link",
+          "description": "Dispatched 1-click dynamic recovery link (https://invoices.razorpay.com/inv_TV91pbn51391) to email & sms (erynbekelja@gmail.com).",
+          "timeDisplay": "10:13 PM"
+        },
+        {
+          "id": "t-dun-1788108472655",
+          "type": "action",
+          "title": "Smart dunning payment link dispatched",
+          "channel": "email",
+          "timestamp": "2026-08-30T16:47:52.654Z",
+          "actionType": "Payment link",
+          "description": "Dispatched 1-click dynamic recovery link (https://invoices.razorpay.com/inv_TV91pbn51391) across email & sms. Reassuring personalized copy delivered.",
+          "timeDisplay": "10:17 pm"
+        }
+      ],
+      "createdAt": "2026-08-30T16:32:21.286Z",
+      "companyName": "Bekelja Enterprises",
+      "failureCode": "INVOICE_OVERDUE",
+      "maxAttempts": 3,
+      "aiPolicyNote": "Action aligns with the overdue enterprise invoice policy and remains within the allowed reminder threshold.",
+      "attemptCount": 3,
+      "customerName": "Eryn Bekelja",
+      "llmDiagnosis": {
+        "diagnosedAt": "2026-08-30T16:32:39.673Z",
+        "scheduledAt": "2026-08-31T04:30:00.000Z",
+        "priorityRank": "High Priority",
+        "optimalTimeWindow": "Aug 31, 2026, 10:00 AM",
+        "recommendedAction": "Send reminder",
+        "rootCauseCategory": "Behavioral",
+        "customerExplanation": "Hi Eryn, we noticed that the payment for invoice INV-3232 is currently overdue. To ensure uninterrupted service, please use the secure link below to complete your payment: https://invoices.razorpay.com/inv_TV91pbn51391. Rest assured, this is a one-time settlement request and no duplicate debits will occur.",
+        "merchantExplanation": "The invoice INV-3232 reached its settlement deadline without capture due to the expiration of the automated payment window. This is a standard dunning intervention required to prompt the client for a high-value manual settlement via the generated payment link.",
+        "optimalWindowReason": "Scheduling at 10:00 AM on Monday morning aligns with B2B professional startup hours, significantly increasing the likelihood of the customer reviewing and clearing high-value invoices at the start of their work week.",
+        "recoveryProbability": 85,
+        "responseWindowHours": 24,
+        "rootCauseSubCategory": "Invoice Settlement Window Elapsed",
+        "scheduledTimeDisplay": "Aug 31, 2026, 10:00 AM",
+        "responseWindowDeadline": "2026-09-01T04:30:00.000Z"
+      },
+      "priorityRank": "High Priority",
+      "customerEmail": "erynbekelja@gmail.com",
+      "customerPhone": "+919845425050",
+      "failureReason": "Invoice INV-3232 settlement window elapsed without payment capture",
+      "invoiceNumber": "INV-3232",
+      "paymentMethod": "Razorpay Invoice Portal",
+      "policyAllowed": true,
+      "paymentLinkUrl": "https://invoices.razorpay.com/inv_TV91pbn51391",
+      "scheduledRetry": {
+        "status": "pending",
+        "bankName": "Razorpay Invoice Portal",
+        "autoExecute": true,
+        "scheduledAt": "2026-08-31T04:30:00.000Z",
+        "windowReason": "Scheduling at 10:00 AM on Monday morning aligns with B2B professional startup hours, significantly increasing the likelihood of the customer reviewing and clearing high-value invoices at the start of their work week.",
+        "peakSuccessRate": 85,
+        "scheduledTimeDisplay": "Aug 31, 2026, 10:00 AM"
+      },
+      "channelStatuses": [
+        {
+          "status": "delivered",
+          "channel": "email",
+          "details": "Delivered via Transactional SMTP • 256-bit TLS",
+          "recipient": "erynbekelja@gmail.com",
+          "timestamp": "2026-08-30T16:47:52.654Z"
+        },
+        {
+          "status": "delivered",
+          "channel": "sms",
+          "details": "Delivered via DLT Telecom Route • Carrier ACK",
+          "recipient": "+919845425050",
+          "timestamp": "2026-08-30T16:47:52.654Z"
+        }
+      ],
+      "lastDiagnosedAt": "2026-08-30T16:32:39.673Z",
+      "normalizedError": {
+        "code": "INVOICE_OVERDUE",
+        "category": "Behavioral",
+        "isTransient": false,
+        "subCategory": "Commercial Invoice Overdue",
+        "optimalTimeWindow": "Standard Corporate Business Hours (11:00 AM)",
+        "recommendedAction": "Send reminder",
+        "customerExplanation": "Invoice is outstanding past agreed settlement terms. Please arrange wire settlement or click the secure link to pay online.",
+        "merchantExplanation": "Enterprise invoice payment terms elapsed without settlement. Automated dunning dispatch with instant Razorpay corporate settlement link."
+      },
+      "recoveredAmount": 0,
+      "scoringBreakdown": {
+        "factors": [
+          {
+            "name": "Root Cause (Commercial Invoice Terms)",
+            "weight": 3,
+            "description": "B2B commercial invoices have high eventual capture with active dunning.",
+            "valueDisplay": "78% Baseline"
+          },
+          {
+            "name": "Mid-Tier Customer LTV",
+            "weight": 4,
+            "description": "Good lifetime transaction volume (₹98,690).",
+            "valueDisplay": "+4% (Tier 2 LTV)"
+          },
+          {
+            "name": "High-Ticket Value Adjustment",
+            "weight": -6,
+            "description": "Large transaction (₹98,690) requires deliberate buyer confirmation.",
+            "valueDisplay": "-6% (High Ticket)"
+          },
+          {
+            "name": "Fresh Failure Window (< 1h)",
+            "weight": 0,
+            "description": "Payment addressed immediately during active user session.",
+            "valueDisplay": "0% (Fresh)"
+          }
+        ],
+        "baseScore": 78,
+        "ltvFactor": 4,
+        "finalScore": 76,
+        "priorityRank": "Critical Priority",
+        "attemptPenalty": 0,
+        "timeElapsedDecay": 0,
+        "failureReasonFactor": 0,
+        "expectedRecoveryValue": 75004,
+        "amountAndFrequencyFactor": -6,
+        "historicalSuccessRateFactor": 0
+      },
+      "razorpayPaymentId": "inv_TV91pbn51391",
+      "recommendedAction": "Payment link",
+      "rootCauseCategory": "Behavioral",
+      "timelineUpdatedAt": "2026-08-30T16:47:52.654Z",
+      "recoveryProbability": 85,
+      "responseWindowHours": 48,
+      "rootCauseSubCategory": "Invoice Settlement Window Elapsed",
+      "expectedRecoveryValue": 75004,
+      "responseWindowDeadline": "2026-09-01T16:47:52.655Z"
+    },
     {
       "id": "RC-INV-mxcp",
       "customerName": "Evangeline Aeniah",
@@ -285,100 +821,6 @@
       },
       "responseWindowHours": 24,
       "responseWindowDeadline": "2026-09-01T08:30:00.000Z"
-    },
-    {
-      "id": "RC-INV-LbOo",
-      "customerName": "Anette Iyer",
-      "customerEmail": "anetteiyer@gmail.com",
-      "customerPhone": "+919897295358",
-      "companyName": "Iyer Enterprises",
-      "issue": "Invoice overdue",
-      "amount": 700,
-      "risk": "Medium",
-      "recommendedAction": "Payment link",
-      "status": "Scheduled",
-      "updated": "30 Aug 2026, 06:26 pm",
-      "createdAt": "2026-08-30T12:56:01.000Z",
-      "failureReason": "Invoice #inv_TVzMhNCpYdLbOo unpaid (Invoice Settlement: INV-3753)",
-      "failureCode": "INVOICE_UNPAID",
-      "paymentMethod": "Razorpay Invoice Portal",
-      "razorpayPaymentId": "inv_TVzMhNCpYdLbOo",
-      "invoiceNumber": "inv_TVzMhNCpYdLbOo",
-      "attemptCount": 1,
-      "maxAttempts": 3,
-      "recoveryProbability": 85,
-      "aiWhy": "The invoice remains unpaid because the initial checkout session expired without a completed transaction capture. No automated retries have been triggered yet as the invoice is in its initial grace period.",
-      "aiPolicyNote": "Invoice recovery bounds verified. Autonomous payment link permitted.",
-      "policyAllowed": true,
-      "recoveredAmount": 0,
-      "paymentLinkUrl": "https://rzp.io/rzp/3bUJNc2p",
-      "timeline": [
-        {
-          "id": "t-inv-inv_TVzMhNCpYdLbOo",
-          "type": "detection",
-          "title": "Invoice #inv_TVzMhNCpYdLbOo generated on Razorpay",
-          "timestamp": "2026-08-30T12:56:01.000Z",
-          "description": "Invoice issued for ₹700 (\"Invoice Settlement: INV-3753\"). Customer contact: anetteiyer@gmail.com. Link: https://rzp.io/rzp/3bUJNc2p",
-          "timeDisplay": "30 Aug 2026, 06:26 pm"
-        },
-        {
-          "id": "t-fail-inv_TVzMhNCpYdLbOo",
-          "type": "failure",
-          "title": "Invoice payment overdue / Settlement pending",
-          "timestamp": "2026-08-30T13:06:01.000Z",
-          "description": "Invoice reached unpaid threshold (Invoice Settlement: INV-3753). Initial checkout window elapsed without capture.",
-          "timeDisplay": "30 Aug 2026, 06:36 pm"
-        },
-        {
-          "id": "t-sch-RC-INV-LbOo",
-          "type": "scheduled",
-          "title": "Optimal-timing retry scheduled",
-          "timestamp": "2026-08-30T16:11:07.499Z",
-          "actionType": "Schedule retry",
-          "description": "Scheduled autonomous background retry for Aug 31, 2026, 02:00 PM (Customer is historically active during evening hours but likely missed the initial checkout window due to timing. Scheduling for the following afternoon increases visibility during the customer's next active browsing session. - 85% peak rate).",
-          "timeDisplay": "09:41 pm"
-        },
-        {
-          "id": "t-diag-RC-INV-LbOo-1788106267499",
-          "type": "diagnosis",
-          "title": "AI Root-Cause Diagnosis (Action: Payment link)",
-          "timestamp": "2026-08-30T16:11:07.499Z",
-          "actionType": "Payment link",
-          "description": "The invoice remains unpaid because the initial checkout session expired without a completed transaction capture. No automated retries have been triggered yet as the invoice is in its initial grace period. [Optimal Window: Aug 31, 2026, 02:00 PM • Expected Salvage: 85%]",
-          "timeDisplay": "09:41 pm"
-        }
-      ],
-      "llmDiagnosis": {
-        "diagnosedAt": "2026-08-30T16:11:07.499Z",
-        "scheduledAt": "2026-08-31T08:30:00.000Z",
-        "priorityRank": "Medium Priority",
-        "optimalTimeWindow": "Aug 31, 2026, 02:00 PM",
-        "recommendedAction": "Payment link",
-        "rootCauseCategory": "Behavioral",
-        "customerExplanation": "Hi Anette, it looks like the payment for your recent invoice (INV-3753) didn't go through. Please use the link below to complete the payment securely; rest assured, no previous charges have been processed.",
-        "merchantExplanation": "The invoice remains unpaid because the initial checkout session expired without a completed transaction capture. No automated retries have been triggered yet as the invoice is in its initial grace period.",
-        "optimalWindowReason": "Customer is historically active during evening hours but likely missed the initial checkout window due to timing. Scheduling for the following afternoon increases visibility during the customer's next active browsing session.",
-        "recoveryProbability": 85,
-        "responseWindowHours": 24,
-        "rootCauseSubCategory": "Checkout Session Timeout",
-        "scheduledTimeDisplay": "Aug 31, 2026, 02:00 PM",
-        "responseWindowDeadline": "2026-08-31T16:11:03.113Z"
-      },
-      "rootCauseCategory": "Behavioral",
-      "rootCauseSubCategory": "Checkout Session Timeout",
-      "priorityRank": "Medium Priority",
-      "lastDiagnosedAt": "2026-08-30T16:11:07.499Z",
-      "scheduledRetry": {
-        "status": "pending",
-        "bankName": "Razorpay Invoice Portal",
-        "autoExecute": true,
-        "scheduledAt": "2026-08-31T08:30:00.000Z",
-        "windowReason": "Customer is historically active during evening hours but likely missed the initial checkout window due to timing. Scheduling for the following afternoon increases visibility during the customer's next active browsing session.",
-        "peakSuccessRate": 85,
-        "scheduledTimeDisplay": "Aug 31, 2026, 02:00 PM"
-      },
-      "responseWindowHours": 24,
-      "responseWindowDeadline": "2026-08-31T16:11:03.113Z"
     },
     {
       "id": "RC-INV-UbaJ",
@@ -1689,30 +2131,12 @@
     },
     {
       "id": "RC-INV-XigZ",
-      "customerName": "Abbye Austin",
-      "customerEmail": "abbyeaustin@gmail.com",
-      "customerPhone": "+919872544991",
-      "companyName": "Austin Enterprises",
+      "risk": "High",
+      "aiWhy": "The invoice #inv_TVyqufXCMwXigZ remained unpaid following the initial issuance. The failure is categorized as a behavioral non-completion where the customer did not finalize the checkout process within the immediate window post-generation.",
       "issue": "Invoice overdue",
       "amount": 85000,
-      "risk": "High",
-      "recommendedAction": "Send reminder",
       "status": "Scheduled",
       "updated": "30 Aug 2026, 05:55 pm",
-      "createdAt": "2026-08-30T12:25:55.000Z",
-      "failureReason": "Invoice #inv_TVyqufXCMwXigZ unpaid (Invoice Settlement: INV-6580)",
-      "failureCode": "INVOICE_UNPAID",
-      "paymentMethod": "Razorpay Invoice Portal",
-      "razorpayPaymentId": "inv_TVyqufXCMwXigZ",
-      "invoiceNumber": "inv_TVyqufXCMwXigZ",
-      "attemptCount": 1,
-      "maxAttempts": 3,
-      "recoveryProbability": 85,
-      "aiWhy": "The invoice #inv_TVyqufXCMwXigZ remained unpaid following the initial issuance. The failure is categorized as a behavioral non-completion where the customer did not finalize the checkout process within the immediate window post-generation.",
-      "aiPolicyNote": "Invoice recovery bounds verified. Autonomous payment link permitted.",
-      "policyAllowed": true,
-      "recoveredAmount": 0,
-      "paymentLinkUrl": "https://rzp.io/rzp/wsUlrmx3",
       "timeline": [
         {
           "id": "t-inv-inv_TVyqufXCMwXigZ",
@@ -1749,6 +2173,13 @@
           "timeDisplay": "09:39 pm"
         }
       ],
+      "createdAt": "2026-08-30T12:25:55.000Z",
+      "companyName": "Austin Enterprises",
+      "failureCode": "INVOICE_UNPAID",
+      "maxAttempts": 3,
+      "aiPolicyNote": "Invoice recovery bounds verified. Autonomous payment link permitted.",
+      "attemptCount": 1,
+      "customerName": "Abbye Austin",
       "llmDiagnosis": {
         "diagnosedAt": "2026-08-30T16:09:52.375Z",
         "scheduledAt": "2026-08-31T08:30:00.000Z",
@@ -1765,10 +2196,14 @@
         "scheduledTimeDisplay": "Aug 31, 2026, 02:00 PM",
         "responseWindowDeadline": "2026-08-31T16:09:45.552Z"
       },
-      "rootCauseCategory": "Behavioral",
-      "rootCauseSubCategory": "Checkout Abandonment",
       "priorityRank": "High Priority",
-      "lastDiagnosedAt": "2026-08-30T16:09:52.375Z",
+      "customerEmail": "abbyeaustin@gmail.com",
+      "customerPhone": "+919872544991",
+      "failureReason": "Invoice #inv_TVyqufXCMwXigZ unpaid (Invoice Settlement: INV-6580)",
+      "invoiceNumber": "inv_TVyqufXCMwXigZ",
+      "paymentMethod": "Razorpay Invoice Portal",
+      "policyAllowed": true,
+      "paymentLinkUrl": "https://rzp.io/rzp/f44ujo8748",
       "scheduledRetry": {
         "status": "pending",
         "bankName": "Razorpay Invoice Portal",
@@ -1778,7 +2213,14 @@
         "peakSuccessRate": 85,
         "scheduledTimeDisplay": "Aug 31, 2026, 02:00 PM"
       },
+      "lastDiagnosedAt": "2026-08-30T16:09:52.375Z",
+      "recoveredAmount": 0,
+      "razorpayPaymentId": "inv_TVyqufXCMwXigZ",
+      "recommendedAction": "Send reminder",
+      "rootCauseCategory": "Behavioral",
+      "recoveryProbability": 85,
       "responseWindowHours": 24,
+      "rootCauseSubCategory": "Checkout Abandonment",
       "responseWindowDeadline": "2026-08-31T16:09:45.552Z"
     },
     {
@@ -2161,6 +2603,15 @@
           "timeDisplay": "29 Aug 2026, 09:27 pm"
         },
         {
+          "id": "t-pay-reconciled-pay_TVfWFIUZ7vpQ3J",
+          "type": "failure",
+          "title": "Payment Attempt Failed (pay_TVfWFIUZ7vpQ3J)",
+          "timestamp": "2026-08-29T17:31:12.000Z",
+          "actionType": "Payment link",
+          "description": "Gateway charge of ₹12,000 via Card (RuPay •••• 6611) failed (Your payment has been cancelled. Try again or complete the payment later.).",
+          "timeDisplay": "29 Aug 2026, 11:01 pm"
+        },
+        {
           "id": "t-sch-RC-PL-1GfyID",
           "type": "scheduled",
           "title": "Optimal-timing retry scheduled",
@@ -2417,6 +2868,15 @@
           "actionType": "Payment link",
           "description": "Link plink_TVeCnr2FWAcxJ7 active for ₹1,000: https://rzp.io/rzp/sLlQB9G (Subscription Autopay Settlement: Case RC-SUB-1720)",
           "timeDisplay": "29 Aug 2026, 09:44 pm"
+        },
+        {
+          "id": "t-pay-reconciled-pay_TVfUcBTDTCHQNz",
+          "type": "failure",
+          "title": "Payment Attempt Failed (pay_TVfUcBTDTCHQNz)",
+          "timestamp": "2026-08-29T17:29:39.000Z",
+          "actionType": "Payment link",
+          "description": "Gateway charge of ₹1,000 via Card (RuPay •••• 6611) failed (Your payment has been cancelled. Try again or complete the payment later.).",
+          "timeDisplay": "29 Aug 2026, 10:59 pm"
         },
         {
           "id": "t-sch-RC-SUB-1720",
@@ -2737,7 +3197,7 @@
       "dateDisplay": "Today",
       "eventTitle": "Payment failure detected on Razorpay",
       "caseId": "RC-PL-1GfyID",
-      "customerName": "Anthiathia Abert",
+      "customerName": "Alicia Bearce",
       "amount": 12000,
       "decision": "Analyze risk & dispatch recovery",
       "reason": "Payment failed: Your payment has been cancelled. Try again or complete the payment later.",
@@ -2753,7 +3213,7 @@
       "dateDisplay": "Today",
       "eventTitle": "Payment failure detected on Razorpay",
       "caseId": "RC-SUB-1720",
-      "customerName": "Essie Benedick",
+      "customerName": "Cesya Best",
       "amount": 1000,
       "decision": "Analyze risk & dispatch recovery",
       "reason": "Payment failed: Your payment has been cancelled. Try again or complete the payment later.",
@@ -2769,7 +3229,7 @@
       "dateDisplay": "Today",
       "eventTitle": "Payment failure detected on Razorpay",
       "caseId": "order_TVdr46ikrsnN7q",
-      "customerName": "Gilemette Accalia",
+      "customerName": "Krishna Belshin",
       "amount": 85000,
       "decision": "Analyze risk & dispatch recovery",
       "reason": "Payment failed: Your payment has been cancelled. Try again or complete the payment later.",
@@ -2777,6 +3237,22 @@
       "result": "Queued for autonomous recovery",
       "resultStatus": "failure",
       "details": "Razorpay Payment ID: pay_TVeVjDBf3RO8fj"
+    },
+    {
+      "id": "act-RC-INV-iKwk",
+      "timestamp": "2026-08-30T16:50:52.000Z",
+      "timeDisplay": "30 Aug 2026, 10:20 pm",
+      "dateDisplay": "Today",
+      "eventTitle": "Invoice issued on Razorpay",
+      "caseId": "RC-INV-iKwk",
+      "customerName": "Bertina Ajani",
+      "amount": 750,
+      "decision": "Send reminder",
+      "reason": "The invoice INV-3323 has exceeded the Net-30 settlement window, resulting in an 'Invoice Unpaid' status. This is a standard B2B collection delay, requiring a professional dunning notification to trigger the client's accounts payable workflow.",
+      "policy": "Razorpay billing synchronization compliant",
+      "result": "Link dispatched: https://rzp.io/rzp/lv2q0Xgv",
+      "resultStatus": "info",
+      "details": "Invoice ID: inv_TW3MmlKtB5iKwk"
     },
     {
       "id": "act-RC-INV-UbaJ",
@@ -2921,22 +3397,6 @@
       "result": "Link dispatched: https://rzp.io/rzp/KYPVsWV",
       "resultStatus": "info",
       "details": "Invoice ID: inv_TVytuOTqhS06fc"
-    },
-    {
-      "id": "act-RC-INV-XigZ",
-      "timestamp": "2026-08-30T12:25:55.000Z",
-      "timeDisplay": "30 Aug 2026, 05:55 pm",
-      "dateDisplay": "Today",
-      "eventTitle": "Invoice issued on Razorpay",
-      "caseId": "RC-INV-XigZ",
-      "customerName": "Abbye Austin",
-      "amount": 85000,
-      "decision": "Send reminder",
-      "reason": "The invoice #inv_TVyqufXCMwXigZ remained unpaid following the initial issuance. The failure is categorized as a behavioral non-completion where the customer did not finalize the checkout process within the immediate window post-generation.",
-      "policy": "Razorpay billing synchronization compliant",
-      "result": "Link dispatched: https://rzp.io/rzp/wsUlrmx3",
-      "resultStatus": "info",
-      "details": "Invoice ID: inv_TVyqufXCMwXigZ"
     }
   ],
   "payments": [
@@ -2946,8 +3406,8 @@
       "orderId": "order_TVdv1S5PJjav9e",
       "invoiceId": "",
       "subscriptionId": "",
-      "customerName": "Anthiathia Abert",
-      "customerEmail": "anthiathiaabert@gmail.com",
+      "customerName": "Alicia Bearce",
+      "customerEmail": "aliciabearce@gmail.com",
       "customerPhone": "+917981271373",
       "amount": 12000,
       "status": "failed",
@@ -2969,8 +3429,8 @@
       "orderId": "order_TVeD54580I8Tf2",
       "invoiceId": "",
       "subscriptionId": "",
-      "customerName": "Essie Benedick",
-      "customerEmail": "essiebenedick@gmail.com",
+      "customerName": "Cesya Best",
+      "customerEmail": "cesyabest@gmail.com",
       "customerPhone": "+917981271373",
       "amount": 1000,
       "status": "failed",
@@ -2992,8 +3452,8 @@
       "orderId": "order_TVdr46ikrsnN7q",
       "invoiceId": "inv_TVdr3qbeDDgMhS",
       "subscriptionId": "",
-      "customerName": "Gilemette Accalia",
-      "customerEmail": "gilemetteaccalia@gmail.com",
+      "customerName": "Krishna Belshin",
+      "customerEmail": "krishnabelshin@gmail.com",
       "customerPhone": "+917981271373",
       "amount": 85000,
       "status": "failed",
