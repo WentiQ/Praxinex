@@ -202,49 +202,97 @@ export default function App() {
     return Array.from(map.values());
   }, [cases, payments, syncedCustomers]);
 
-  // Fixed historical daily baselines for past days so today's live recoveries do not alter past dates
-  const historicalPastRecoveries = useMemo(() => [142000, 165000, 190000, 215000, 240000, 285000], []);
-  const historicalPastRisk = useMemo(() => [420000, 480000, 510000, 530000, 560000, 610000], []);
-
-  // Dynamic Real-Time Trend Data calculated directly from live cases & settlements
+  // Dynamic Real-Time Trend Data calculated strictly from database cases & payments
+  // Shows 0 for days without data (no speculation or hardcoded baselines)
   const trendData = useMemo(() => {
-    const activeAtRisk = cases.reduce((sum, c) => sum + (c.status !== 'Recovered' ? c.amount : 0), 0);
-    const todayRecovered = cases
-      .filter(c => c.status === 'Recovered')
-      .reduce((sum, c) => sum + (c.recoveredAmount || c.amount || 0), 0);
-
     const now = new Date();
     const points = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(now.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
-      const label = i === 0 ? 'Today' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-      let recVal = 0;
-      let riskVal = 0;
+    const matchesDay = (dateInput: any, targetYYYYMMDD: string) => {
+      if (!dateInput) return false;
+      if (typeof dateInput === 'string' && dateInput.startsWith(targetYYYYMMDD)) return true;
+      try {
+        const d = new Date(dateInput);
+        if (isNaN(d.getTime())) return false;
+        return d.toISOString().split('T')[0] === targetYYYYMMDD;
+      } catch {
+        return false;
+      }
+    };
+
+    const createdOnOrBefore = (c: RecoveryCase, dayEndMs: number) => {
+      if (!c.createdAt) return true;
+      try {
+        const t = new Date(c.createdAt).getTime();
+        return isNaN(t) || t <= dayEndMs;
+      } catch {
+        return true;
+      }
+    };
+
+    for (let i = 6; i >= 0; i--) {
+      const dayObj = new Date(now);
+      dayObj.setDate(now.getDate() - i);
+      const targetYYYYMMDD = dayObj.toISOString().split('T')[0];
+      const label = i === 0 ? 'Today' : dayObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+      const dayEnd = new Date(dayObj);
+      dayEnd.setHours(23, 59, 59, 999);
+      const dayEndMs = dayEnd.getTime();
 
       if (i === 0) {
-        recVal = todayRecovered;
-        riskVal = activeAtRisk;
-      } else {
-        // Fixed past date historical value + any cases explicitly recovered on that specific date
-        const basePast = historicalPastRecoveries[6 - i] || 150000;
-        const casesOnDate = cases.filter(c => c.status === 'Recovered' && c.recoveredAt && c.recoveredAt.startsWith(dateStr));
-        const extraRec = casesOnDate.reduce((sum, c) => sum + (c.recoveredAmount || c.amount || 0), 0);
-        recVal = basePast + extraRec;
-        riskVal = historicalPastRisk[6 - i] || 500000;
-      }
+        // TODAY:
+        // - Recovered: Total amount recovered today across live cases
+        // - Revenue at risk: Total active unrecovered cases today
+        const recVal = cases
+          .filter(c => c.status === 'Recovered')
+          .reduce((sum, c) => sum + (c.recoveredAmount || c.amount || 0), 0);
 
-      points.push({
-        date: label,
-        revenueAtRisk: riskVal,
-        recovered: recVal,
-        remaining: riskVal
-      });
+        const riskVal = cases
+          .filter(c => c.status !== 'Recovered')
+          .reduce((sum, c) => sum + (c.amount || 0), 0);
+
+        points.push({
+          date: label,
+          revenueAtRisk: riskVal,
+          recovered: recVal,
+          remaining: riskVal
+        });
+      } else {
+        // PAST DAYS (Strictly calculated from database — 0 if no records exist for that day):
+        const recoveredCasesOnDay = cases.filter(c => c.status === 'Recovered' && matchesDay(c.recoveredAt || c.updated || c.createdAt, targetYYYYMMDD));
+        const recFromCases = recoveredCasesOnDay.reduce((sum, c) => sum + (c.recoveredAmount || c.amount || 0), 0);
+
+        const paymentsOnDay = payments.filter(p => (p.status === 'captured' || p.status === 'succeeded') && matchesDay(p.isoTimestamp || (p as any).createdAt || p.timestamp, targetYYYYMMDD));
+        const recFromPayments = paymentsOnDay.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+        const recVal = Math.max(recFromCases, recFromPayments);
+
+        const riskCasesOnDay = cases.filter(c => {
+          if (!createdOnOrBefore(c, dayEndMs)) return false;
+          if (c.status !== 'Recovered') return true;
+          if (c.recoveredAt) {
+            try {
+              const recMs = new Date(c.recoveredAt).getTime();
+              if (!isNaN(recMs) && recMs > dayEndMs) return true;
+            } catch {}
+          }
+          return false;
+        });
+
+        const riskVal = riskCasesOnDay.reduce((sum, c) => sum + (c.amount || 0), 0);
+
+        points.push({
+          date: label,
+          revenueAtRisk: riskVal,
+          recovered: recVal,
+          remaining: riskVal
+        });
+      }
     }
+
     return points;
-  }, [cases, historicalPastRecoveries, historicalPastRisk]);
+  }, [cases, payments]);
 
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
 

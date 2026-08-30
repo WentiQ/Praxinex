@@ -200,11 +200,11 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
               <div className="flex items-center space-x-4 text-xs font-mono">
                 <div className="flex items-center space-x-1.5">
                   <span className="w-2.5 h-2.5 rounded-sm bg-neutral-300"></span>
-                  <span className="text-neutral-600">At Risk</span>
+                  <span className="text-neutral-600">At Risk (End of Day)</span>
                 </div>
                 <div className="flex items-center space-x-1.5">
                   <span className="w-2.5 h-2.5 rounded-sm bg-emerald-600"></span>
-                  <span className="text-emerald-900 font-medium">Recovered</span>
+                  <span className="text-emerald-900 font-medium">Recovered (Daily)</span>
                 </div>
               </div>
             </div>
@@ -244,10 +244,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                           <div className="bg-neutral-900 text-white p-3 rounded-lg shadow-lg text-xs font-mono space-y-1.5 border border-neutral-800">
                             <p className="font-semibold text-neutral-300">{label}</p>
                             <p className="text-emerald-400">
-                              Recovered: {formatINR(Number(recEntry?.value || 0))}
+                              Daily Recovered: {formatINR(Number(recEntry?.value || 0))}
                             </p>
                             <p className="text-neutral-300">
-                              Revenue at Risk: {formatINR(Number(riskEntry?.value || 0))}
+                              End-of-Day At Risk: {formatINR(Number(riskEntry?.value || 0))}
                             </p>
                           </div>
                         );
