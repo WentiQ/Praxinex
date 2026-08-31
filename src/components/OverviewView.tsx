@@ -29,7 +29,7 @@ import { Cpu, UserCheck } from 'lucide-react';
 
 interface OverviewViewProps {
   cases: RecoveryCase[];
-  trendData: Array<{ date: string; revenueAtRisk: number; recovered: number; remaining: number }>;
+  trendData: Array<{ date: string; dayStr?: string; revenueAtRisk: number; recovered: number; remaining?: number; isToday?: boolean }>;
   totalAtRisk: number;
   totalRecovered: number;
   recoveryRate: number;
@@ -62,6 +62,15 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
     return Math.round(c.amount * (prob / 100));
   };
 
+  // Dynamic Auto-Eligible & Needs Review Counts
+  const autoEligibleCount = React.useMemo(() => {
+    return cases.filter(c => c.status !== 'Recovered' && c.policyAllowed !== false && c.risk !== 'High').length;
+  }, [cases]);
+
+  const needsReviewCount = React.useMemo(() => {
+    return cases.filter(c => c.status !== 'Recovered' && (c.status === 'Needs review' || c.risk === 'High' || c.policyAllowed === false)).length;
+  }, [cases]);
+
   // Dynamically compute KPI growth comparison percentages
   const recoveredChangePercent = React.useMemo(() => {
     if (trendData && trendData.length >= 2) {
@@ -70,10 +79,12 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
       if (prevVal > 0) {
         const change = ((todayVal - prevVal) / prevVal) * 100;
         return Number(change.toFixed(1));
+      } else if (todayVal > 0) {
+        return 100;
       }
     }
-    return totalRecovered > 0 ? 12.5 : 0;
-  }, [trendData, totalRecovered]);
+    return 0;
+  }, [trendData]);
 
   const recoveryRateChange = React.useMemo(() => {
     const total = totalAtRisk + totalRecovered;
@@ -85,6 +96,47 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
     }
     return 0;
   }, [totalAtRisk, totalRecovered]);
+
+  // Average time to recovery calculated dynamically from recovered cases
+  const avgTimeToRecovery = React.useMemo(() => {
+    const recovered = cases.filter(c => c.status === 'Recovered');
+    if (recovered.length === 0) return '18 mins';
+    let totalMins = 0;
+    let validCount = 0;
+    recovered.forEach(c => {
+      try {
+        const created = c.createdAt ? new Date(c.createdAt).getTime() : 0;
+        let rec = c.recoveredAt ? new Date(c.recoveredAt).getTime() : 0;
+        if (!rec && c.updated && !isNaN(new Date(c.updated).getTime())) {
+          rec = new Date(c.updated).getTime();
+        }
+        if (created > 0 && rec > 0 && rec >= created) {
+          const diffMins = Math.round((rec - created) / 60000);
+          if (diffMins > 0 && diffMins < 10080) { // within 7 days
+            totalMins += diffMins;
+            validCount++;
+          }
+        }
+      } catch {}
+    });
+    if (validCount > 0) {
+      const avg = Math.round(totalMins / validCount);
+      if (avg < 60) return `${Math.max(1, avg)} mins`;
+      const hours = Math.floor(avg / 60);
+      const mins = avg % 60;
+      return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+    }
+    return '18 mins';
+  }, [cases]);
+
+  // Expected recovery rate ceiling computed dynamically across active portfolio
+  const recoveryCeiling = React.useMemo(() => {
+    const active = cases.filter(c => c.status !== 'Recovered');
+    if (active.length === 0) return '95.0%';
+    const totalProb = active.reduce((sum, c) => sum + (c.recoveryProbability || 75), 0);
+    const avg = (totalProb / active.length).toFixed(1);
+    return `${avg}%`;
+  }, [cases]);
 
   // Top critical cases prioritized by expected recoverable revenue
   const displayCases = [...cases]
@@ -178,8 +230,8 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             {activeCasesCount}
           </div>
           <div className="mt-3 flex items-center justify-between text-xs text-[#737373]">
-            <span>19 auto-eligible</span>
-            <span className="text-neutral-600 font-mono">5 review</span>
+            <span>{autoEligibleCount} auto-eligible</span>
+            <span className="text-neutral-600 font-mono">{needsReviewCount} review</span>
           </div>
         </div>
       </section>
@@ -194,7 +246,13 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-sm font-semibold text-[#171717]">Revenue recovered</h3>
+                <div className="flex items-center space-x-2">
+                  <h3 className="text-sm font-semibold text-[#171717]">Revenue recovered</h3>
+                  <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>Realtime</span>
+                  </span>
+                </div>
                 <p className="text-xs text-[#737373]">Daily recovery velocity vs total revenue at risk</p>
               </div>
               <div className="flex items-center space-x-4 text-xs font-mono">
@@ -214,11 +272,11 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                 <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                   <defs>
                     <linearGradient id="recoveredGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#059669" stopOpacity={0.15}/>
+                      <stop offset="5%" stopColor="#059669" stopOpacity={0.20}/>
                       <stop offset="95%" stopColor="#059669" stopOpacity={0.0}/>
                     </linearGradient>
                     <linearGradient id="atRiskGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#737373" stopOpacity={0.08}/>
+                      <stop offset="5%" stopColor="#737373" stopOpacity={0.10}/>
                       <stop offset="95%" stopColor="#737373" stopOpacity={0.0}/>
                     </linearGradient>
                   </defs>
@@ -233,22 +291,51 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                     tick={{ fontSize: 11, fill: '#737373' }} 
                     axisLine={false}
                     tickLine={false}
-                    tickFormatter={(val) => `₹${(val / 1000).toFixed(0)}k`}
+                    tickFormatter={(val) => {
+                      if (val === 0) return '₹0';
+                      if (val >= 100000) return `₹${(val / 100000).toFixed(val % 100000 === 0 ? 0 : 1)}L`;
+                      if (val >= 1000) return `₹${(val / 1000).toFixed(0)}k`;
+                      return `₹${val}`;
+                    }}
                   />
                   <Tooltip 
                     content={({ active, payload, label }) => {
                       if (active && payload && payload.length) {
                         const recEntry = payload.find(p => p.dataKey === 'recovered');
                         const riskEntry = payload.find(p => p.dataKey === 'revenueAtRisk');
+                        const isTodayPoint = payload[0]?.payload?.isToday || label === 'Today';
+                        const recVal = Number(recEntry?.value || 0);
+                        const riskVal = Number(riskEntry?.value || 0);
+                        const totalDay = recVal + riskVal;
+                        const dayRate = totalDay > 0 ? ((recVal / totalDay) * 100).toFixed(1) : '0.0';
+
                         return (
                           <div className="bg-neutral-900 text-white p-3 rounded-lg shadow-lg text-xs font-mono space-y-1.5 border border-neutral-800">
-                            <p className="font-semibold text-neutral-300">{label}</p>
-                            <p className="text-emerald-400">
-                              Daily Recovered: {formatINR(Number(recEntry?.value || 0))}
-                            </p>
-                            <p className="text-neutral-300">
-                              End-of-Day At Risk: {formatINR(Number(riskEntry?.value || 0))}
-                            </p>
+                            <div className="flex items-center justify-between space-x-3 pb-1 border-b border-neutral-800">
+                              <span className="font-semibold text-neutral-200">{label}</span>
+                              {isTodayPoint && (
+                                <span className="inline-flex items-center space-x-1 text-[10px] text-emerald-400 bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-800">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                  <span>Realtime</span>
+                                </span>
+                              )}
+                            </div>
+                            <div className="space-y-1 pt-0.5">
+                              <p className="text-emerald-400 flex items-center justify-between space-x-4">
+                                <span className="text-neutral-400">Daily Recovered:</span>
+                                <span className="font-bold">{formatINR(recVal)}</span>
+                              </p>
+                              <p className="text-neutral-300 flex items-center justify-between space-x-4">
+                                <span className="text-neutral-400">Revenue At Risk:</span>
+                                <span className="font-bold">{formatINR(riskVal)}</span>
+                              </p>
+                              {totalDay > 0 && (
+                                <p className="text-neutral-400 text-[10px] flex items-center justify-between space-x-4 pt-1 border-t border-neutral-800">
+                                  <span>Day Efficiency:</span>
+                                  <span className="text-neutral-300 font-semibold">{dayRate}%</span>
+                                </p>
+                              )}
+                            </div>
                           </div>
                         );
                       }
@@ -278,8 +365,8 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           </div>
 
           <div className="mt-4 pt-3 border-t border-[#F0F0F0] flex items-center justify-between text-xs text-[#737373]">
-            <span>Average time to recovery: <strong className="text-neutral-900 font-mono">18 mins</strong></span>
-            <span>Recovery rate ceiling: <strong className="text-neutral-900 font-mono">84.2%</strong></span>
+            <span>Average time to recovery: <strong className="text-neutral-900 font-mono">{avgTimeToRecovery}</strong></span>
+            <span>Recovery rate ceiling: <strong className="text-neutral-900 font-mono">{recoveryCeiling}</strong></span>
           </div>
         </div>
 

@@ -203,96 +203,215 @@ export default function App() {
   }, [cases, payments, syncedCustomers]);
 
   // Dynamic Real-Time Trend Data calculated strictly from database cases & payments
-  // Shows 0 for days without data (no speculation or hardcoded baselines)
+  // Past days are strictly immutable historical closes and NEVER change when today updates.
+  // Today's point updates dynamically in real time as cases are recovered or simulated.
   const trendData = useMemo(() => {
+    const parseToDate = (input: any): Date | null => {
+      if (!input) return null;
+      if (input instanceof Date) return isNaN(input.getTime()) ? null : input;
+      if (typeof input === 'number') {
+        const d = new Date(input < 1e11 ? input * 1000 : input);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      const str = String(input).trim();
+      if (!str) return null;
+      const lower = str.toLowerCase();
+      if (lower === 'just now' || lower === 'payment settled') return new Date();
+      if (lower.startsWith('today')) {
+        const d = new Date();
+        const timeMatch = str.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?/i);
+        if (timeMatch) {
+          let hours = parseInt(timeMatch[1], 10);
+          const mins = parseInt(timeMatch[2], 10);
+          const ampm = timeMatch[4]?.toLowerCase();
+          if (ampm === 'pm' && hours < 12) hours += 12;
+          if (ampm === 'am' && hours === 12) hours = 0;
+          d.setHours(hours, mins, 0, 0);
+        }
+        return d;
+      }
+      if (lower.startsWith('yesterday')) {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        const timeMatch = str.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?/i);
+        if (timeMatch) {
+          let hours = parseInt(timeMatch[1], 10);
+          const mins = parseInt(timeMatch[2], 10);
+          const ampm = timeMatch[4]?.toLowerCase();
+          if (ampm === 'pm' && hours < 12) hours += 12;
+          if (ampm === 'am' && hours === 12) hours = 0;
+          d.setHours(hours, mins, 0, 0);
+        }
+        return d;
+      }
+      const timeOnlyMatch = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?$/i);
+      if (timeOnlyMatch) {
+        const d = new Date();
+        let hours = parseInt(timeOnlyMatch[1], 10);
+        const mins = parseInt(timeOnlyMatch[2], 10);
+        const ampm = timeOnlyMatch[4]?.toLowerCase();
+        if (ampm === 'pm' && hours < 12) hours += 12;
+        if (ampm === 'am' && hours === 12) hours = 0;
+        d.setHours(hours, mins, 0, 0);
+        return d;
+      }
+      const parsed = new Date(str);
+      if (!isNaN(parsed.getTime())) return parsed;
+      return null;
+    };
+
+    const toLocalDateStr = (d: Date | null): string => {
+      if (!d || isNaN(d.getTime())) return '';
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
     const now = new Date();
-    const points = [];
+    const todayLocalStr = toLocalDateStr(now);
 
-    const matchesDay = (dateInput: any, targetYYYYMMDD: string) => {
-      if (!dateInput) return false;
-      if (typeof dateInput === 'string' && dateInput.startsWith(targetYYYYMMDD)) return true;
-      try {
-        const d = new Date(dateInput);
-        if (isNaN(d.getTime())) return false;
-        return d.toISOString().split('T')[0] === targetYYYYMMDD;
-      } catch {
-        return false;
+    const getCaseCreationDate = (c: RecoveryCase): Date => {
+      if (c.createdAt) {
+        const d = parseToDate(c.createdAt);
+        if (d) return d;
       }
+      if (Array.isArray(c.timeline) && c.timeline.length > 0 && c.timeline[0]?.timestamp) {
+        const d = parseToDate(c.timeline[0].timestamp);
+        if (d) return d;
+      }
+      return now;
     };
 
-    const createdOnOrBefore = (c: RecoveryCase, dayEndMs: number) => {
-      if (!c.createdAt) return true;
-      try {
-        const t = new Date(c.createdAt).getTime();
-        return isNaN(t) || t <= dayEndMs;
-      } catch {
-        return true;
+    const getCaseRecoveryDate = (c: RecoveryCase): Date | null => {
+      if (c.status !== 'Recovered') return null;
+      if (c.recoveredAt) {
+        const d = parseToDate(c.recoveredAt);
+        if (d) return d;
       }
+      if (Array.isArray(c.timeline)) {
+        for (let i = c.timeline.length - 1; i >= 0; i--) {
+          const t = c.timeline[i];
+          if (t && (t.type === 'recovered' || (t.title && /settled|recovered|captured/i.test(t.title)))) {
+            const d = parseToDate(t.timestamp || t.timeDisplay);
+            if (d) return d;
+          }
+        }
+      }
+      return now;
     };
 
-    for (let i = 6; i >= 0; i--) {
-      const dayObj = new Date(now);
-      dayObj.setDate(now.getDate() - i);
-      const targetYYYYMMDD = dayObj.toISOString().split('T')[0];
-      const label = i === 0 ? 'Today' : dayObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    let daysCount = 7;
+    if (dateRange === '30d') daysCount = 30;
+    else if (dateRange === 'month') daysCount = Math.max(7, now.getDate());
 
-      const dayEnd = new Date(dayObj);
-      dayEnd.setHours(23, 59, 59, 999);
-      const dayEndMs = dayEnd.getTime();
+    const points: Array<{ date: string; dayStr: string; revenueAtRisk: number; recovered: number; remaining: number; isToday: boolean }> = [];
 
-      if (i === 0) {
-        // TODAY:
-        // - Recovered: Total amount recovered today across live cases
-        // - Revenue at risk: Total active unrecovered cases today
-        const recVal = cases
-          .filter(c => c.status === 'Recovered')
-          .reduce((sum, c) => sum + (c.recoveredAmount || c.amount || 0), 0);
+    for (let i = daysCount - 1; i >= 0; i--) {
+      const dayObj = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      const targetDayStr = toLocalDateStr(dayObj);
+      const isToday = (i === 0);
 
-        const riskVal = cases
+      let label = dayObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      if (isToday) label = 'Today';
+      else if (i === 1) label = 'Yesterday';
+
+      let dayRecovered = 0;
+      let dayAtRisk = 0;
+      const countedCaseIds = new Set<string>();
+
+      if (isToday) {
+        // TODAY (Live Real-Time):
+        // Active at risk = sum of all currently unrecovered cases
+        dayAtRisk = cases
           .filter(c => c.status !== 'Recovered')
-          .reduce((sum, c) => sum + (c.amount || 0), 0);
+          .reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
 
-        points.push({
-          date: label,
-          revenueAtRisk: riskVal,
-          recovered: recVal,
-          remaining: riskVal
+        // Recovered today = all cases recovered today
+        cases.forEach(c => {
+          if (c.status === 'Recovered') {
+            const recDate = getCaseRecoveryDate(c);
+            if (recDate && toLocalDateStr(recDate) === targetDayStr) {
+              const amt = Number(c.recoveredAmount || c.amount || 0);
+              dayRecovered += amt;
+              if (c.id) countedCaseIds.add(c.id);
+              if (c.razorpayPaymentId) countedCaseIds.add(c.razorpayPaymentId);
+              if (c.invoiceNumber) countedCaseIds.add(c.invoiceNumber);
+            }
+          }
+        });
+
+        // Succeeded payments today (not already counted via linked cases)
+        payments.forEach(p => {
+          if (p.status === 'succeeded' || p.status === 'captured') {
+            const pDate = parseToDate(p.isoTimestamp || (p as any).createdAt || p.timestamp);
+            if (pDate && toLocalDateStr(pDate) === targetDayStr) {
+              const isAlreadyCounted = (p.caseId && countedCaseIds.has(p.caseId)) || 
+                                       (p.id && countedCaseIds.has(p.id)) || 
+                                       (p.razorpayPaymentId && countedCaseIds.has(p.razorpayPaymentId)) ||
+                                       (p.invoiceId && countedCaseIds.has(p.invoiceId));
+              if (!isAlreadyCounted) {
+                dayRecovered += Number(p.amount || 0);
+              }
+            }
+          }
         });
       } else {
-        // PAST DAYS (Strictly calculated from database — 0 if no records exist for that day):
-        const recoveredCasesOnDay = cases.filter(c => c.status === 'Recovered' && matchesDay(c.recoveredAt || c.updated || c.createdAt, targetYYYYMMDD));
-        const recFromCases = recoveredCasesOnDay.reduce((sum, c) => sum + (c.recoveredAmount || c.amount || 0), 0);
+        // PAST DAYS (Historical Ledger - 100% IMMUTABLE & INDEPENDENT of today's actions):
+        cases.forEach(c => {
+          const cCreated = getCaseCreationDate(c);
+          const cCreatedStr = toLocalDateStr(cCreated);
+          const cRec = getCaseRecoveryDate(c);
+          const cRecStr = cRec ? toLocalDateStr(cRec) : null;
 
-        const paymentsOnDay = payments.filter(p => (p.status === 'captured' || p.status === 'succeeded') && matchesDay(p.isoTimestamp || (p as any).createdAt || p.timestamp, targetYYYYMMDD));
-        const recFromPayments = paymentsOnDay.reduce((sum, p) => sum + (p.amount || 0), 0);
-
-        const recVal = Math.max(recFromCases, recFromPayments);
-
-        const riskCasesOnDay = cases.filter(c => {
-          if (!createdOnOrBefore(c, dayEndMs)) return false;
-          if (c.status !== 'Recovered') return true;
-          if (c.recoveredAt) {
-            try {
-              const recMs = new Date(c.recoveredAt).getTime();
-              if (!isNaN(recMs) && recMs > dayEndMs) return true;
-            } catch {}
+          // Did this case exist on or before targetDay?
+          if (cCreatedStr <= targetDayStr) {
+            // Was it already recovered on or before targetDay?
+            if (cRecStr && cRecStr <= targetDayStr) {
+              // If recovered ON this specific historical day, record it
+              if (cRecStr === targetDayStr) {
+                const amt = Number(c.recoveredAmount || c.amount || 0);
+                dayRecovered += amt;
+                if (c.id) countedCaseIds.add(c.id);
+                if (c.razorpayPaymentId) countedCaseIds.add(c.razorpayPaymentId);
+                if (c.invoiceNumber) countedCaseIds.add(c.invoiceNumber);
+              }
+            } else {
+              // Not recovered on this targetDay (either unrecovered or recovered on a later day/today) -> was AT RISK on targetDay!
+              dayAtRisk += Number(c.amount || 0);
+            }
           }
-          return false;
         });
 
-        const riskVal = riskCasesOnDay.reduce((sum, c) => sum + (c.amount || 0), 0);
-
-        points.push({
-          date: label,
-          revenueAtRisk: riskVal,
-          recovered: recVal,
-          remaining: riskVal
+        // Historical payments succeeded on this specific past day
+        payments.forEach(p => {
+          if (p.status === 'succeeded' || p.status === 'captured') {
+            const pDate = parseToDate(p.isoTimestamp || (p as any).createdAt || p.timestamp);
+            if (pDate && toLocalDateStr(pDate) === targetDayStr) {
+              const isAlreadyCounted = (p.caseId && countedCaseIds.has(p.caseId)) || 
+                                       (p.id && countedCaseIds.has(p.id)) || 
+                                       (p.razorpayPaymentId && countedCaseIds.has(p.razorpayPaymentId)) ||
+                                       (p.invoiceId && countedCaseIds.has(p.invoiceId));
+              if (!isAlreadyCounted) {
+                dayRecovered += Number(p.amount || 0);
+              }
+            }
+          }
         });
       }
+
+      points.push({
+        date: label,
+        dayStr: targetDayStr,
+        revenueAtRisk: dayAtRisk,
+        recovered: dayRecovered,
+        remaining: dayAtRisk,
+        isToday
+      });
     }
 
     return points;
-  }, [cases, payments]);
+  }, [cases, payments, dateRange]);
 
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
@@ -590,6 +709,16 @@ export default function App() {
   };
 
   const handleCompleteAction = (updatedCase: RecoveryCase, recoveredAmount: number) => {
+    const now = new Date();
+    const timeDisplay = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const isSuccess = updatedCase.status === 'Recovered';
+
+    if (isSuccess) {
+      updatedCase.recoveredAt = updatedCase.recoveredAt || now.toISOString();
+      updatedCase.recoveredAmount = Number(recoveredAmount || updatedCase.recoveredAmount || updatedCase.amount || 0);
+      updatedCase.updated = 'Payment settled';
+    }
+
     // Update cases list
     setCases(prev => prev.map(c => c.id === updatedCase.id ? updatedCase : c));
     
@@ -597,11 +726,6 @@ export default function App() {
     if (selectedCase && selectedCase.id === updatedCase.id) {
       setSelectedCase(updatedCase);
     }
-
-    // Add activity record
-    const now = new Date();
-    const timeDisplay = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const isSuccess = updatedCase.status === 'Recovered';
 
     const newActivity: ActivityEvent = {
       id: `act-${Date.now()}`,

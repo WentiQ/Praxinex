@@ -900,14 +900,22 @@ app.post('/api/cases', async (req, res) => {
   const caseItem = req.body;
   if (caseItem && caseItem.id) {
     sanitizeCasePaymentUrls([caseItem]);
-    const isNew = !liveCasesStore.some((c: any) => c.id === caseItem.id);
     const existingIdx = liveCasesStore.findIndex((c: any) => c.id === caseItem.id);
+    const existingCase = existingIdx >= 0 ? liveCasesStore[existingIdx] : null;
+    const timelineChanged = existingCase ? checkTimelineChanged(existingCase.timeline, caseItem.timeline) : (Array.isArray(caseItem.timeline) && caseItem.timeline.length > 0);
+
     if (existingIdx >= 0) {
       liveCasesStore[existingIdx] = { ...liveCasesStore[existingIdx], ...caseItem };
     } else {
       liveCasesStore.unshift(caseItem);
     }
     await db.upsertCase(caseItem);
+
+    // If timeline was updated and case is not recovered, automatically run AI LLM diagnosis
+    if (caseItem.status !== 'Recovered' && timelineChanged) {
+      onCaseTimelineUpdated(caseItem.id, 'API /api/cases');
+    }
+
     checkAndDiagnoseMostRecentCase().catch(() => {});
   }
   res.json({ success: true, case: caseItem });
@@ -917,9 +925,74 @@ app.put('/api/cases/:id', async (req, res) => {
   const caseItem = req.body;
   if (caseItem) {
     caseItem.id = req.params.id;
+    sanitizeCasePaymentUrls([caseItem]);
+    const existingIdx = liveCasesStore.findIndex((c: any) => c.id === caseItem.id);
+    const existingCase = existingIdx >= 0 ? liveCasesStore[existingIdx] : null;
+    const timelineChanged = existingCase ? checkTimelineChanged(existingCase.timeline, caseItem.timeline) : (Array.isArray(caseItem.timeline) && caseItem.timeline.length > 0);
+
+    if (existingIdx >= 0) {
+      liveCasesStore[existingIdx] = { ...liveCasesStore[existingIdx], ...caseItem };
+    } else {
+      liveCasesStore.unshift(caseItem);
+    }
     await db.upsertCase(caseItem);
+
+    // If timeline was updated and case is not recovered, automatically run AI LLM diagnosis
+    if (caseItem.status !== 'Recovered' && timelineChanged) {
+      onCaseTimelineUpdated(caseItem.id, 'API /api/cases/:id');
+    }
   }
   res.json({ success: true, case: caseItem });
+});
+
+// Dedicated endpoint to append a timeline event to a case & auto-trigger AI LLM diagnosis
+app.post('/api/cases/:id/timeline', async (req, res) => {
+  try {
+    const caseId = req.params.id;
+    const event = req.body;
+    if (!event || !event.title) {
+      return res.status(400).json({ error: 'Missing timeline event payload with title' });
+    }
+
+    let targetCase = liveCasesStore.find((c: any) => c.id === caseId);
+    if (!targetCase) {
+      const dbCases = await db.getCases();
+      targetCase = dbCases.find((c: any) => c.id === caseId);
+      if (targetCase) liveCasesStore.unshift(targetCase);
+    }
+
+    if (!targetCase) {
+      return res.status(404).json({ error: `Case ${caseId} not found` });
+    }
+
+    const now = new Date();
+    const timeDisplay = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const fullEvent = {
+      id: event.id || `t-cust-${Date.now()}`,
+      timestamp: event.timestamp || now.toISOString(),
+      timeDisplay: event.timeDisplay || timeDisplay,
+      title: event.title,
+      description: event.description || '',
+      type: event.type || 'info',
+      actionType: event.actionType
+    };
+
+    if (!targetCase.timeline) targetCase.timeline = [];
+    targetCase.timeline.push(fullEvent);
+    targetCase.timelineUpdatedAt = now.toISOString();
+    targetCase.updated = 'Just now';
+
+    await db.upsertCase(targetCase);
+
+    // If case is not recovered, automatically run AI LLM diagnosis for this recovery case
+    if (targetCase.status !== 'Recovered') {
+      onCaseTimelineUpdated(targetCase.id, 'Timeline Event Added');
+    }
+
+    res.json({ success: true, caseId, timeline: targetCase.timeline, case: targetCase });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to append timeline event' });
+  }
 });
 
 // Direct Checkout Settlement Endpoint
@@ -935,9 +1008,9 @@ app.post('/api/cases/:id/settle', async (req, res) => {
     targetCase.status = 'Recovered';
     targetCase.recommendedAction = 'None (Recovered)';
     targetCase.recoveredAmount = Number(amount) || targetCase.amount;
-    targetCase.recoveredAt = timeDisplay;
+    targetCase.recoveredAt = now.toISOString();
     targetCase.razorpayPaymentId = paymentId;
-    targetCase.updated = 'Just now';
+    targetCase.updated = 'Payment settled';
     if (!targetCase.timeline) targetCase.timeline = [];
     targetCase.timeline.push({
       id: `t-pay-${Date.now()}`,
@@ -1195,8 +1268,8 @@ app.post('/api/razorpay/webhook', async (req, res) => {
             ...c,
             status: 'Recovered',
             recoveredAmount: c.amount,
-            recoveredAt: timeDisplay,
-            updated: 'Just now'
+            recoveredAt: now.toISOString(),
+            updated: 'Payment settled'
           };
           db.upsertCase(updated).catch(() => {});
           return updated;
@@ -1843,6 +1916,9 @@ app.get('/api/razorpay/sync', async (req, res) => {
             });
             // Re-sort timeline chronologically
             cs.timeline.sort((a: any, b: any) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+            if (!isSuccess && cs.status !== 'Recovered') {
+              onCaseTimelineUpdated(cs.id, 'Ledger Sync Payment Failure');
+            }
           }
         }
       }
@@ -2183,7 +2259,10 @@ app.post('/api/razorpay/action', async (req, res) => {
     if (caseId) {
       const targetCase = liveCasesStore.find((c: any) => c.id === caseId);
       if (targetCase) {
-        db.upsertCase(targetCase).catch(() => {});
+        await db.upsertCase(targetCase);
+        if (targetCase.status !== 'Recovered') {
+          onCaseTimelineUpdated(targetCase.id, 'Action Execution: ' + actionType);
+        }
       }
     }
     if (liveActivitiesStore.length > 0) {
@@ -2317,7 +2396,10 @@ app.post('/api/dunning/dispatch', async (req, res) => {
         channel: channels[0] || 'email'
       });
 
-      db.upsertCase(targetCase).catch(() => {});
+      await db.upsertCase(targetCase);
+      if (targetCase.status !== 'Recovered') {
+        onCaseTimelineUpdated(targetCase.id, 'Dunning Link Dispatch');
+      }
     }
 
     // Record Activity
@@ -2427,8 +2509,12 @@ app.post('/api/dunning/schedule-retry', async (req, res) => {
     };
     liveActivitiesStore.unshift(newActivity);
 
-    db.upsertCase(targetCase).catch(() => {});
+    await db.upsertCase(targetCase);
     db.addActivity(newActivity).catch(() => {});
+
+    if (targetCase.status !== 'Recovered') {
+      onCaseTimelineUpdated(targetCase.id, 'Schedule Retry');
+    }
 
     console.log(`⏰ [Scheduler] Case ${caseId} scheduled for ${scheduledTimeDisplay}`);
 
@@ -2532,7 +2618,10 @@ app.post('/api/dunning/execute-scheduled', async (req, res) => {
       liveActivitiesStore.unshift(act);
       db.addActivity(act).catch(() => {});
 
-      db.upsertCase(c).catch(() => {});
+      await db.upsertCase(c);
+      if (c.status !== 'Recovered') {
+        onCaseTimelineUpdated(c.id, 'Scheduled Retry Execution');
+      }
       executedResults.push({ caseId: c.id, status: c.status, amount: c.amount, paymentLinkUrl: linkUrl });
     }
 
@@ -2577,7 +2666,11 @@ app.post('/api/dunning/cancel-retry', async (req, res) => {
       actionType: 'Schedule retry'
     });
 
-    db.upsertCase(targetCase).catch(() => {});
+    await db.upsertCase(targetCase);
+    if (targetCase.status !== 'Recovered') {
+      onCaseTimelineUpdated(targetCase.id, 'Cancel Scheduled Retry');
+    }
+    res.json({ success: true, caseId, case: targetCase });
     res.json({ success: true, caseId, case: targetCase });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Failed to cancel scheduled retry' });
@@ -2663,7 +2756,10 @@ setInterval(async () => {
           };
           liveActivitiesStore.unshift(act);
           db.addActivity(act).catch(() => {});
-          db.upsertCase(c).catch(() => {});
+          await db.upsertCase(c);
+          if (c.status !== 'Recovered') {
+            onCaseTimelineUpdated(c.id, 'Autonomous Background Scheduler');
+          }
           console.log(`✅ [Autonomous Background Worker] Dispatched scheduled retry for Case ${c.id} on schedule (Link: ${linkUrl})`);
         } catch (execErr: any) {
           console.error(`Error auto-executing case ${c.id}:`, execErr);
@@ -3118,17 +3214,71 @@ let liveAgentState: any = {
 };
 
 // -------------------------------------------------------------
-// EVENT-DRIVEN AI DIAGNOSIS QUEUE (FIFO on Timeline Update)
+// EVENT-DRIVEN AI DIAGNOSIS QUEUE & TIMELINE UPDATE SENTINEL
 // -------------------------------------------------------------
 let aiDiagnosisQueue: string[] = [];
 let isProcessingDiagnosisQueue = false;
 
-function enqueueCaseForDiagnosis(caseId: string) {
+// Helper to filter out AI diagnosis timeline events to prevent recursive loops
+function getNonDiagnosisTimelineEvents(timeline: any[]): any[] {
+  if (!Array.isArray(timeline)) return [];
+  return timeline.filter((t: any) => {
+    if (!t) return false;
+    const title = typeof t.title === 'string' ? t.title.toLowerCase() : '';
+    const type = typeof t.type === 'string' ? t.type.toLowerCase() : '';
+    if (type === 'diagnosis' || type === 'ai_diagnosis') return false;
+    if (title.includes('ai root-cause diagnosis') || title.includes('ai diagnosis & decision') || title.includes('ai strategy evaluated')) return false;
+    return true;
+  });
+}
+
+// Detects if a timeline has received new non-diagnosis events or modifications
+function checkTimelineChanged(oldTimeline: any[], newTimeline: any[]): boolean {
+  const oldEvents = getNonDiagnosisTimelineEvents(oldTimeline);
+  const newEvents = getNonDiagnosisTimelineEvents(newTimeline);
+
+  if (oldEvents.length !== newEvents.length) return true;
+
+  if (newEvents.length > 0) {
+    const oldLast = oldEvents[oldEvents.length - 1];
+    const newLast = newEvents[newEvents.length - 1];
+    if (oldLast?.id !== newLast?.id || oldLast?.timestamp !== newLast?.timestamp || oldLast?.title !== newLast?.title || oldLast?.description !== newLast?.description) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Automatically triggered whenever a recovery case's timeline is updated
+function onCaseTimelineUpdated(caseId: string, source: string = 'Timeline Update') {
+  if (!caseId) return;
+  const targetCase = liveCasesStore.find((c: any) => c.id === caseId);
+  if (!targetCase) return;
+
+  // If the case is recovered in this update or already recovered, DO NOT run AI diagnosis
+  if (targetCase.status === 'Recovered') {
+    console.log(`ℹ️ [Timeline Sentinel] Case ${caseId} is Recovered. Skipping AI LLM diagnosis.`);
+    return;
+  }
+
+  console.log(`⚡ [Timeline Sentinel] Case ${caseId} received timeline update via [${source}] (Status: ${targetCase.status}). Automatically running AI LLM diagnosis...`);
+  addLiveAgentThought(
+    `Timeline update detected on active case: ${targetCase.customerName} (${targetCase.id}) via ${source}. Automatically running Gemini LLM diagnosis...`,
+    'Sparkles',
+    targetCase.id,
+    'Timeline Sentinel'
+  );
+
+  enqueueCaseForDiagnosis(caseId, true);
+}
+
+function enqueueCaseForDiagnosis(caseId: string, force: boolean = false) {
   if (!caseId) return;
   if (!aiDiagnosisQueue.includes(caseId)) {
     aiDiagnosisQueue.push(caseId);
     console.log(`📥 [AI Diagnosis Queue] Enqueued Case ${caseId}. Queue depth: ${aiDiagnosisQueue.length} (Order: ${aiDiagnosisQueue.join(' -> ')})`);
-    addLiveAgentThought(`Enqueued Case ${caseId} for chronological LLM diagnosis (Queue depth: ${aiDiagnosisQueue.length})`, 'Clock', caseId, 'Queue Manager');
+    addLiveAgentThought(`Enqueued Case ${caseId} for LLM diagnosis (Queue depth: ${aiDiagnosisQueue.length})`, 'Clock', caseId, 'Queue Manager');
   }
   processNextDiagnosisQueueItem();
 }
@@ -4612,6 +4762,9 @@ app.post('/api/agent/chat', async (req, res) => {
               };
               caseCards = [matchedCase];
               hasMutations = true;
+              if (matchedCase.status !== 'Recovered') {
+                onCaseTimelineUpdated(matchedCase.id, 'Praxinex Chat Payment Link Action');
+              }
             } catch (linkErr: any) {
               console.warn('Payment link creation failed:', linkErr.message);
             }
