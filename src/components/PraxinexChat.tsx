@@ -134,13 +134,15 @@ export const PraxinexChat: React.FC<PraxinexChatProps> = ({
           actions: data.actions,
           caseCards: data.caseCards,
           paymentLinkCard: data.paymentLinkCard,
+          mandateRepairCard: data.mandateRepairCard,
+          scheduledRetryCard: data.scheduledRetryCard,
           metricsHighlight: data.metricsHighlight
         };
 
         setMessages(prev => [...prev, agentMessage]);
 
-        // If the agent performed any mutation or payment link, trigger instant platform sync
-        if (data.hasMutations || data.paymentLinkCard) {
+        // If the agent performed any mutation or created cards, trigger instant platform sync
+        if (data.hasMutations || data.paymentLinkCard || data.mandateRepairCard || data.scheduledRetryCard) {
           onSyncGateway();
         }
 
