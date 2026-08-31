@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Sidebar, NavigationTab } from './components/Sidebar';
-import { Header } from './components/Header';
 import { OverviewView } from './components/OverviewView';
 import { RecoveryCasesView } from './components/RecoveryCasesView';
 import { PaymentsView } from './components/PaymentsView';
@@ -18,6 +17,7 @@ import { ActionExecutionModal } from './components/ActionExecutionModal';
 import { SimulateFailureModal } from './components/SimulateFailureModal';
 import { ScanProgressModal } from './components/ScanProgressModal';
 import { AuthModal } from './components/AuthModal';
+import { LoadingScreen } from './components/LoadingScreen';
 import { supabase } from './lib/supabaseClient';
 import { Sparkles } from 'lucide-react';
 import { 
@@ -34,6 +34,7 @@ export default function App() {
   // Navigation
   const [currentTab, setCurrentTab] = useState<NavigationTab>('overview');
   const [dateRange, setDateRange] = useState<string>('today');
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
 
   // Supabase Authentication State
   const [user, setUser] = useState<any | null>(null);
@@ -590,6 +591,7 @@ export default function App() {
     let isMounted = true;
 
     async function init() {
+      const startTime = Date.now();
       try {
         const resMerchant = await fetch('/api/merchant');
         const dataMerchant = await resMerchant.json();
@@ -618,6 +620,16 @@ export default function App() {
           setPolicies(prev => ({ ...prev, ...dataPolicies.policies }));
         }
       } catch {}
+
+      if (isMounted) {
+        const elapsed = Date.now() - startTime;
+        const remainingDelay = Math.max(0, 1600 - elapsed);
+        setTimeout(() => {
+          if (isMounted) {
+            setIsInitialLoading(false);
+          }
+        }, remainingDelay);
+      }
     }
 
     init();
@@ -900,11 +912,12 @@ export default function App() {
     }
   };
 
-  const headerInfo = getHeaderDetails();
-
   return (
     <div className="flex h-screen bg-[#F8F9FA] overflow-hidden select-none font-sans relative" id="recovery-app-root">
-      {/* Left Sidebar */}
+      {/* Fullscreen Initial Loading Splash Page */}
+      <LoadingScreen isLoading={isInitialLoading} />
+
+      {/* Left Sidebar with integrated Date Range & Simulator controls */}
       <Sidebar
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
@@ -915,25 +928,13 @@ export default function App() {
         onOpenPraxinexCopilot={() => setIsPraxinexChatOpen(true)}
         user={user}
         onOpenAuth={() => setIsAuthModalOpen(true)}
+        dateRange={dateRange}
+        setDateRange={setDateRange}
+        onSimulateFailure={() => setIsSimulateOpen(true)}
       />
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto" id="main-content-scrollable">
-        {/* Top Header */}
-        <Header
-          title={headerInfo.title}
-          subtitle={headerInfo.subtitle}
-          isScanning={isScanOpen}
-          onRunScan={() => setIsScanOpen(true)}
-          onSimulateFailure={() => setIsSimulateOpen(true)}
-          merchant={merchant}
-          dateRange={dateRange}
-          setDateRange={setDateRange}
-          onOpenPraxinex={() => setIsPraxinexChatOpen(true)}
-          user={user}
-          onOpenAuth={() => setIsAuthModalOpen(true)}
-        />
-
         {/* View Switcher */}
         <main className="flex-1 pb-16">
           {currentTab === 'overview' && (

@@ -12,7 +12,9 @@ import {
   ChevronRight,
   Sparkles,
   Layers,
-  Clock
+  Clock,
+  Calendar,
+  PlusCircle
 } from 'lucide-react';
 import { MerchantProfile } from '../types';
 
@@ -39,6 +41,9 @@ interface SidebarProps {
   onOpenPraxinexCopilot?: () => void;
   user?: any | null;
   onOpenAuth?: () => void;
+  dateRange?: string;
+  setDateRange?: (range: string) => void;
+  onSimulateFailure?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -50,7 +55,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenSettings,
   onOpenPraxinexCopilot,
   user,
-  onOpenAuth
+  onOpenAuth,
+  dateRange,
+  setDateRange,
+  onSimulateFailure
 }) => {
   const navItems = [
     { id: 'overview' as NavigationTab, label: 'Overview', icon: LayoutDashboard },
@@ -81,7 +89,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <div>
               <div className="flex items-center space-x-1.5">
-                <span className="font-semibold text-sm tracking-tight text-[#171717]">Recovery</span>
+                <span className="font-semibold text-sm tracking-tight text-[#171717]">Praxinex</span>
                 <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
                   AI Ops
                 </span>
@@ -92,9 +100,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Live Agent Status Widget */}
-        <div className="px-3 py-3 border-b border-[#EAEAEA]">
+        <div className="px-3 py-2.5 border-b border-[#EAEAEA]">
           <div className="bg-[#F8F9FA] border border-[#E7E7E7] rounded-lg p-2.5">
-            <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center justify-between mb-1">
               <div className="flex items-center space-x-1.5">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -106,10 +114,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 Active
               </span>
             </div>
-            <p className="text-[11px] text-[#737373] leading-snug">
-              Monitoring Razorpay webhooks & bounded recovery policies.
+            <p className="text-[10.5px] text-[#737373] leading-snug">
+              Monitoring Razorpay & bounded recovery policies.
             </p>
           </div>
+        </div>
+
+        {/* Controls: Date Range & Live Simulator */}
+        <div className="px-3 py-2.5 space-y-2 border-b border-[#EAEAEA] bg-[#FAFAFA]/60">
+          {/* Date Range Selector */}
+          {setDateRange && (
+            <div className="relative">
+              <select
+                id="sidebar-date-range-select"
+                value={dateRange || 'today'}
+                onChange={(e) => setDateRange(e.target.value)}
+                className="w-full appearance-none bg-white border border-[#E7E7E7] hover:border-neutral-400 text-xs text-[#171717] font-medium py-1.5 pl-2.5 pr-7 rounded-md cursor-pointer focus:outline-none focus:ring-1 focus:ring-neutral-900 transition-colors shadow-2xs"
+              >
+                <option value="today">Today ({new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})</option>
+                <option value="7d">Last 7 Days</option>
+                <option value="30d">Last 30 Days</option>
+                <option value="month">This Month</option>
+              </select>
+              <Calendar className="w-3.5 h-3.5 text-[#737373] absolute right-2.5 top-2.5 pointer-events-none" />
+            </div>
+          )}
+
+          {/* Simulate Live Traffic Button */}
+          {onSimulateFailure && (
+            <button
+              id="sidebar-simulate-risk-button"
+              onClick={onSimulateFailure}
+              className="w-full flex items-center justify-center space-x-1.5 py-1.5 px-3 text-xs font-medium text-neutral-800 bg-white border border-[#E7E7E7] hover:border-neutral-400 hover:bg-neutral-50 rounded-md transition-all cursor-pointer shadow-2xs group"
+              title="Open Live Razorpay Traffic & Failure Simulator"
+            >
+              <PlusCircle className="w-3.5 h-3.5 text-emerald-600 group-hover:rotate-90 transition-transform" />
+              <span>Simulate Live Traffic</span>
+            </button>
+          )}
         </div>
 
         {/* Navigation list */}
