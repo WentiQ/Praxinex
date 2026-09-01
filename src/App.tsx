@@ -646,7 +646,38 @@ export default function App() {
   const totalAtRisk = cases.reduce((sum, c) => sum + (c.status !== 'Recovered' ? (Number(c.amount) || 0) : 0), 0);
   const totalRecovered = cases.reduce((sum, c) => sum + (c.status === 'Recovered' ? (Number(c.recoveredAmount || c.amount) || 0) : 0), 0);
   const activeCasesCount = cases.filter(c => c.status !== 'Recovered').length;
-  const scheduledCount = cases.filter(c => c.status !== 'Recovered' && c.scheduledRetry?.status !== 'executed').length;
+  // Helper to extract future scheduled timestamp (strictly future timings)
+  const getFutureScheduledTimestamp = (c: RecoveryCase): number | null => {
+    if (c.status === 'Recovered') return null;
+    const nowMs = Date.now();
+
+    if (c.scheduledRetry?.scheduledAt) {
+      const ms = new Date(c.scheduledRetry.scheduledAt).getTime();
+      if (!isNaN(ms) && ms > nowMs) return ms;
+    }
+    if (c.responseWindowDeadline) {
+      const ms = new Date(c.responseWindowDeadline).getTime();
+      if (!isNaN(ms) && ms > nowMs) return ms;
+    }
+    if (c.llmDiagnosis?.scheduledAt) {
+      const ms = new Date(c.llmDiagnosis.scheduledAt).getTime();
+      if (!isNaN(ms) && ms > nowMs) return ms;
+    }
+    if (c.llmDiagnosis?.responseWindowDeadline) {
+      const ms = new Date(c.llmDiagnosis.responseWindowDeadline).getTime();
+      if (!isNaN(ms) && ms > nowMs) return ms;
+    }
+    const timingStr = c.llmDiagnosis?.optimalTimeWindow || c.scheduledRetry?.scheduledTimeDisplay;
+    if (timingStr) {
+      const parsed = new Date(timingStr);
+      if (!isNaN(parsed.getTime()) && parsed.getTime() > nowMs) {
+        return parsed.getTime();
+      }
+    }
+    return null;
+  };
+
+  const scheduledCount = cases.filter(c => getFutureScheduledTimestamp(c) !== null).length;
   const recoveryRate = (totalRecovered + totalAtRisk) > 0 ? Math.round((totalRecovered / (totalRecovered + totalAtRisk)) * 100) : 0;
   
   // Real Cases Analyzed by Agent
