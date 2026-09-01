@@ -101,14 +101,6 @@ function parseAndNormalizeTiming(c: RecoveryCase): {
   else if (aLower.includes('escalat')) railType = 'escalate';
   else railType = 'link';
 
-  // Determine execution status
-  let status: 'pending' | 'executed' | 'cancelled' = 'pending';
-  if (c.status === 'Recovered' || c.scheduledRetry?.status === 'executed') {
-    status = 'executed';
-  } else if (c.scheduledRetry?.status === 'cancelled') {
-    status = 'cancelled';
-  }
-
   // 1. Try scheduledRetry.scheduledAt
   let targetDate: Date | null = null;
   let reason = c.scheduledRetry?.windowReason || c.llmDiagnosis?.optimalWindowReason || timingText;
@@ -192,6 +184,24 @@ function parseAndNormalizeTiming(c: RecoveryCase): {
 
   const scheduledIso = targetDate.toISOString();
   const scheduledMs = targetDate.getTime();
+
+  // Determine execution status:
+  // An action is only 'executed' if the case is actually Recovered, or if scheduledRetry was executed AND its scheduled time has passed.
+  // If the scheduled time is in the future (> Date.now()) and the case is NOT Recovered, it is strictly 'pending'!
+  let status: 'pending' | 'executed' | 'cancelled' = 'pending';
+  if (c.status === 'Recovered') {
+    status = 'executed';
+  } else if (c.scheduledRetry?.status === 'cancelled') {
+    status = 'cancelled';
+  } else if (c.scheduledRetry?.status === 'executed') {
+    if (scheduledMs > Date.now()) {
+      status = 'pending'; // Timing is still in the future!
+    } else {
+      status = 'executed';
+    }
+  } else {
+    status = 'pending';
+  }
 
   return {
     scheduledIso,

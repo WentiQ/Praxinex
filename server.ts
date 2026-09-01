@@ -2594,9 +2594,7 @@ app.post('/api/dunning/execute-scheduled', async (req, res) => {
     if (caseId) {
       const c = liveCasesStore.find((item: any) => item.id === caseId);
       if (c) casesToExecute.push(c);
-    } else {
       casesToExecute = liveCasesStore.filter((c: any) => {
-        if (forceExecuteAll && (c.status === 'Scheduled' || c.scheduledRetry?.status === 'pending')) return true;
         if (c.scheduledRetry && c.scheduledRetry.status === 'pending') {
           const sMs = new Date(c.scheduledRetry.scheduledAt).getTime();
           return !isNaN(sMs) && nowMs >= sMs;
