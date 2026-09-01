@@ -522,7 +522,8 @@ export const ScheduledActionsView: React.FC<ScheduledActionsViewProps> = ({
             const countdown = formatCountdown(item.scheduledAt);
             const isOverdue = countdown.overdue;
             const isUrgent = countdown.urgent;
-            const isExecuted = item.status === 'executed';
+            const isRecovered = item.caseItem.status === 'Recovered';
+            const isExecuted = isRecovered || item.status === 'executed';
             const isCancelled = item.status === 'cancelled';
             const isThisExecuting = executingId === item.caseId;
             const isNext = idx === 0 && !isExecuted && !isCancelled && filterStatus !== 'executed';
@@ -578,30 +579,31 @@ export const ScheduledActionsView: React.FC<ScheduledActionsViewProps> = ({
                         {item.customerEmail} &bull; Issue: <strong className="text-neutral-700">{item.issue}</strong>
                       </p>
 
-                      {/* Timing & Window Reason Row */}
-                      <div className="flex items-center space-x-2.5 flex-wrap gap-y-1.5 pt-0.5">
-                        <div className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border ${
-                          isExecuted ? 'text-emerald-700 bg-emerald-50 border-emerald-200' :
-                          isCancelled ? 'text-neutral-500 bg-neutral-50 border-neutral-200' :
-                          isOverdue ? 'text-rose-700 bg-rose-50 border-rose-200' :
-                          isUrgent ? 'text-amber-700 bg-amber-50 border-amber-200' :
-                          'text-purple-700 bg-purple-50 border-purple-200'
-                        }`}>
-                          <Clock className="w-3.5 h-3.5 shrink-0" />
-                          <span>Timing: <strong className="font-mono font-semibold">{item.timingText}</strong></span>
-                        </div>
-
-                        {/* Countdown Badge */}
-                        {!isExecuted && !isCancelled && (
-                          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                      {/* Timing & Window Reason Row - Hidden for recovered cases */}
+                      {!isRecovered && !isExecuted && (
+                        <div className="flex items-center space-x-2.5 flex-wrap gap-y-1.5 pt-0.5">
+                          <div className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border ${
+                            isCancelled ? 'text-neutral-500 bg-neutral-50 border-neutral-200' :
                             isOverdue ? 'text-rose-700 bg-rose-50 border-rose-200' :
                             isUrgent ? 'text-amber-700 bg-amber-50 border-amber-200' :
-                            'text-neutral-600 bg-neutral-50 border-neutral-200'
+                            'text-purple-700 bg-purple-50 border-purple-200'
                           }`}>
-                            {countdown.label}
-                          </span>
-                        )}
-                      </div>
+                            <Clock className="w-3.5 h-3.5 shrink-0" />
+                            <span>Timing: <strong className="font-mono font-semibold">{item.timingText}</strong></span>
+                          </div>
+
+                          {/* Countdown Badge */}
+                          {!isCancelled && (
+                            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                              isOverdue ? 'text-rose-700 bg-rose-50 border-rose-200' :
+                              isUrgent ? 'text-amber-700 bg-amber-50 border-amber-200' :
+                              'text-neutral-600 bg-neutral-50 border-neutral-200'
+                            }`}>
+                              {countdown.label}
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       {/* AI Root-Cause telemetry */}
                       {(item.rootCauseCategory || item.rootCauseSubCategory) && (

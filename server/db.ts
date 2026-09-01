@@ -276,11 +276,6 @@ class DatabaseManager {
 
   // --- Recovery Cases ---
   async getCases(userId?: string): Promise<any[]> {
-    if (!userId) {
-      // Unauthenticated / Signed-out state: strictly return empty array
-      return [];
-    }
-
     if (this.isSupabaseActive && this.supabase) {
       try {
         const query = this.supabase
@@ -291,25 +286,34 @@ class DatabaseManager {
         const { data, error } = await query;
         if (data && !error && data.length > 0) {
           const cases = data.map(d => d.case_data);
-          // Strictly return ONLY this authenticated user's cases
-          return cases.filter((c: any) => c && c.userId === userId);
+          if (userId) {
+            // Strictly return this authenticated user's cases, or guest/unassigned cases if none user-specific
+            const userCases = cases.filter((c: any) => c && (c.userId === userId || c.userId === 'guest' || !c.userId));
+            if (userCases.length > 0) return userCases;
+          }
+          // If no userId provided (server startup / background engine) or guest, return all stored cases
+          return cases;
         }
       } catch (err: any) {
         console.error('Supabase getCases error:', err.message);
       }
     }
-    return [];
+    if (userId) {
+      const filtered = this.guestMemoryCache.cases.filter(c => c && (c.userId === userId || c.userId === 'guest' || !c.userId));
+      return filtered.length > 0 ? filtered : this.guestMemoryCache.cases;
+    }
+    return this.guestMemoryCache.cases;
   }
 
   async upsertCase(caseItem: any, userId?: string): Promise<void> {
-    caseItem.userId = userId || caseItem.userId || 'guest';
-    if (!userId) {
-      const idx = this.guestMemoryCache.cases.findIndex(c => c.id === caseItem.id);
-      if (idx >= 0) {
-        this.guestMemoryCache.cases[idx] = caseItem;
-      } else {
-        this.guestMemoryCache.cases.unshift(caseItem);
-      }
+    const effectiveUserId = userId || caseItem.userId || 'guest';
+    caseItem.userId = effectiveUserId;
+    
+    const idx = this.guestMemoryCache.cases.findIndex(c => c.id === caseItem.id);
+    if (idx >= 0) {
+      this.guestMemoryCache.cases[idx] = caseItem;
+    } else {
+      this.guestMemoryCache.cases.unshift(caseItem);
     }
 
     if (this.isSupabaseActive && this.supabase) {
@@ -330,24 +334,22 @@ class DatabaseManager {
 
   async saveCases(cases: any[], replaceAll: boolean = true, userId?: string): Promise<void> {
     const effectiveUserId = userId || 'guest';
-    cases.forEach(c => { if (c) c.userId = effectiveUserId; });
+    cases.forEach(c => { if (c && !c.userId) c.userId = effectiveUserId; });
 
-    if (!userId) {
-      if (replaceAll) {
-        this.guestMemoryCache.cases = cases;
-      } else {
-        const existingMap = new Map<string, any>();
-        for (const c of this.guestMemoryCache.cases) {
-          if (c && c.id) existingMap.set(c.id, c);
-        }
-        for (const c of cases) {
-          if (c && c.id) {
-            const existing = existingMap.get(c.id);
-            existingMap.set(c.id, { ...existing, ...c });
-          }
-        }
-        this.guestMemoryCache.cases = Array.from(existingMap.values());
+    if (replaceAll) {
+      this.guestMemoryCache.cases = cases;
+    } else {
+      const existingMap = new Map<string, any>();
+      for (const c of this.guestMemoryCache.cases) {
+        if (c && c.id) existingMap.set(c.id, c);
       }
+      for (const c of cases) {
+        if (c && c.id) {
+          const existing = existingMap.get(c.id);
+          existingMap.set(c.id, { ...existing, ...c });
+        }
+      }
+      this.guestMemoryCache.cases = Array.from(existingMap.values());
     }
 
     if (this.isSupabaseActive && this.supabase) {
@@ -379,11 +381,6 @@ class DatabaseManager {
 
   // --- Activities Audit Trail ---
   async getActivities(userId?: string): Promise<any[]> {
-    if (!userId) {
-      // Unauthenticated / Signed-out state: strictly return empty array
-      return [];
-    }
-
     let list: any[] = [];
     if (this.isSupabaseActive && this.supabase) {
       try {
@@ -394,14 +391,18 @@ class DatabaseManager {
           .limit(200);
         if (data && !error && data.length > 0) {
           list = data.map(d => d.activity_data);
-          // Strictly return ONLY this user's activities
-          list = list.filter((act: any) => act && act.userId === userId);
+          if (userId) {
+            const userList = list.filter((act: any) => act && (act.userId === userId || act.userId === 'guest' || !act.userId));
+            if (userList.length > 0) list = userList;
+          }
         }
       } catch (err: any) {
         console.error('Supabase getActivities error:', err.message);
       }
     } else {
-      list = [];
+      list = userId 
+        ? this.guestMemoryCache.activities.filter(a => a && (a.userId === userId || a.userId === 'guest' || !a.userId))
+        : this.guestMemoryCache.activities;
     }
 
     // Strictly filter out simulation intake placeholders — show only actions taken after creation
@@ -414,13 +415,12 @@ class DatabaseManager {
   }
 
   async addActivity(activity: any, userId?: string): Promise<void> {
-    activity.userId = userId || activity.userId || 'guest';
-    if (!userId) {
-      if (!this.guestMemoryCache.activities.some(a => a.id === activity.id)) {
-        this.guestMemoryCache.activities.unshift(activity);
-        if (this.guestMemoryCache.activities.length > 300) {
-          this.guestMemoryCache.activities = this.guestMemoryCache.activities.slice(0, 300);
-        }
+    const effectiveUserId = userId || activity.userId || 'guest';
+    activity.userId = effectiveUserId;
+    if (!this.guestMemoryCache.activities.some(a => a.id === activity.id)) {
+      this.guestMemoryCache.activities.unshift(activity);
+      if (this.guestMemoryCache.activities.length > 300) {
+        this.guestMemoryCache.activities = this.guestMemoryCache.activities.slice(0, 300);
       }
     }
 
@@ -443,10 +443,8 @@ class DatabaseManager {
 
   async saveActivities(activities: any[], userId?: string): Promise<void> {
     const effectiveUserId = userId || 'guest';
-    activities.forEach(a => { if (a) a.userId = effectiveUserId; });
-    if (!userId) {
-      this.guestMemoryCache.activities = activities || [];
-    }
+    activities.forEach(a => { if (a && !a.userId) a.userId = effectiveUserId; });
+    this.guestMemoryCache.activities = activities || [];
 
     if (this.isSupabaseActive && this.supabase && activities.length > 0) {
       try {
@@ -468,11 +466,6 @@ class DatabaseManager {
 
   // --- Payments Ledger ---
   async getPayments(userId?: string): Promise<any[]> {
-    if (!userId) {
-      // Unauthenticated / Signed-out state: strictly return empty array
-      return [];
-    }
-
     if (this.isSupabaseActive && this.supabase) {
       try {
         const { data, error } = await this.supabase
@@ -482,24 +475,30 @@ class DatabaseManager {
           .limit(200);
         if (data && !error && data.length > 0) {
           const payments = data.map(d => d.payment_data);
-          // Strictly return ONLY this user's payments
-          return payments.filter((p: any) => p && p.userId === userId);
+          if (userId) {
+            const userPayments = payments.filter((p: any) => p && (p.userId === userId || p.userId === 'guest' || !p.userId));
+            if (userPayments.length > 0) return userPayments;
+          }
+          return payments;
         }
       } catch (err: any) {
         console.error('Supabase getPayments error:', err.message);
       }
     }
-    return [];
+    if (userId) {
+      const filtered = this.guestMemoryCache.payments.filter(p => p && (p.userId === userId || p.userId === 'guest' || !p.userId));
+      return filtered.length > 0 ? filtered : this.guestMemoryCache.payments;
+    }
+    return this.guestMemoryCache.payments;
   }
 
   async addPayment(payment: any, userId?: string): Promise<void> {
-    payment.userId = userId || payment.userId || 'guest';
-    if (!userId) {
-      if (!this.guestMemoryCache.payments.some(p => p.id === payment.id || (p.razorpayPaymentId && p.razorpayPaymentId === payment.razorpayPaymentId))) {
-        this.guestMemoryCache.payments.unshift(payment);
-        if (this.guestMemoryCache.payments.length > 300) {
-          this.guestMemoryCache.payments = this.guestMemoryCache.payments.slice(0, 300);
-        }
+    const effectiveUserId = userId || payment.userId || 'guest';
+    payment.userId = effectiveUserId;
+    if (!this.guestMemoryCache.payments.some(p => p.id === payment.id || (p.razorpayPaymentId && p.razorpayPaymentId === payment.razorpayPaymentId))) {
+      this.guestMemoryCache.payments.unshift(payment);
+      if (this.guestMemoryCache.payments.length > 300) {
+        this.guestMemoryCache.payments = this.guestMemoryCache.payments.slice(0, 300);
       }
     }
 

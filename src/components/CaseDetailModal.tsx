@@ -59,11 +59,16 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     setIsDiagnosingLLM(true);
     setDiagnosisSuccessMsg(false);
 
+    const reqHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (caseItem.userId) {
+      reqHeaders['x-user-id'] = caseItem.userId;
+    }
+
     try {
       console.log(`[LLM Diagnosis] Dispatching Case ${caseItem.id} to Gemini LLM pipeline...`);
       const res = await fetch('/api/agent/diagnose-case', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: reqHeaders,
         body: JSON.stringify({ 
           caseId: caseItem.id,
           caseItem: caseItem 
@@ -97,17 +102,14 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
             updatedCaseObj.status = data.case.status || 'Scheduled';
           }
           
-          // Ensure timeline contains the diagnosis entry
+          // Ensure timeline contains each diagnosis event as an audit trail entry
           const now = new Date();
           const timeDisplay = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const diagEntryId = `t-diag-${caseItem.id}`;
+          const diagEntryId = `t-diag-${caseItem.id}-${Date.now()}`;
           const currentTimeline = Array.isArray(data.case?.timeline) && data.case.timeline.length > 0
             ? [...data.case.timeline]
             : (Array.isArray(caseItem.timeline) ? [...caseItem.timeline] : []);
             
-          const existingIdx = currentTimeline.findIndex(
-            (t: any) => t.id === diagEntryId || t.type === 'diagnosis' || (t.title && t.title.toLowerCase().includes('ai root-cause diagnosis'))
-          );
           const newDiagEntry: TimelineEvent = {
             id: diagEntryId,
             timestamp: now.toISOString(),
@@ -117,9 +119,11 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
             type: 'diagnosis',
             actionType: data.diagnosis.recommendedAction
           };
-          if (existingIdx >= 0) {
-            currentTimeline[existingIdx] = newDiagEntry;
-          } else {
+          
+          const isRecentDup = currentTimeline.some(
+            (t: any) => t && t.type === 'diagnosis' && t.title === newDiagEntry.title && t.description === newDiagEntry.description && Math.abs(new Date(t.timestamp || 0).getTime() - now.getTime()) < 2000
+          );
+          if (!isRecentDup) {
             currentTimeline.push(newDiagEntry);
           }
           currentTimeline.sort((a: any, b: any) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
@@ -133,7 +137,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
 
           fetch('/api/cases', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: reqHeaders,
             body: JSON.stringify(updatedCaseObj)
           }).catch(() => {});
 
@@ -146,11 +150,8 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
         setDiagnosisSuccessMsg(true);
         const now = new Date();
         const timeDisplay = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const diagEntryId = `t-diag-${caseItem.id}`;
+        const diagEntryId = `t-diag-${caseItem.id}-${Date.now()}`;
         const currentTimeline = Array.isArray(caseItem.timeline) ? [...caseItem.timeline] : [];
-        const existingIdx = currentTimeline.findIndex(
-          (t: any) => t.id === diagEntryId || t.type === 'diagnosis' || (t.title && t.title.toLowerCase().includes('ai root-cause diagnosis'))
-        );
         const newDiagEntry: TimelineEvent = {
           id: diagEntryId,
           timestamp: now.toISOString(),
@@ -160,9 +161,10 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
           type: 'diagnosis',
           actionType: fallback.recommendedAction
         };
-        if (existingIdx >= 0) {
-          currentTimeline[existingIdx] = newDiagEntry;
-        } else {
+        const isRecentDup = currentTimeline.some(
+          (t: any) => t && t.type === 'diagnosis' && t.title === newDiagEntry.title && t.description === newDiagEntry.description && Math.abs(new Date(t.timestamp || 0).getTime() - now.getTime()) < 2000
+        );
+        if (!isRecentDup) {
           currentTimeline.push(newDiagEntry);
         }
         currentTimeline.sort((a: any, b: any) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
@@ -183,7 +185,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
         if (onCaseUpdated) onCaseUpdated(updatedCaseObj);
         fetch('/api/cases', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: reqHeaders,
           body: JSON.stringify(updatedCaseObj)
         }).catch(() => {});
         setTimeout(() => setDiagnosisSuccessMsg(false), 4500);
@@ -196,11 +198,8 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       setDiagnosisSuccessMsg(true);
       const now = new Date();
       const timeDisplay = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const diagEntryId = `t-diag-${caseItem.id}`;
+      const diagEntryId = `t-diag-${caseItem.id}-${Date.now()}`;
       const currentTimeline = Array.isArray(caseItem.timeline) ? [...caseItem.timeline] : [];
-      const existingIdx = currentTimeline.findIndex(
-        (t: any) => t.id === diagEntryId || t.type === 'diagnosis' || (t.title && t.title.toLowerCase().includes('ai root-cause diagnosis'))
-      );
       const newDiagEntry: TimelineEvent = {
         id: diagEntryId,
         timestamp: now.toISOString(),
@@ -210,9 +209,10 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
         type: 'diagnosis',
         actionType: fallback.recommendedAction
       };
-      if (existingIdx >= 0) {
-        currentTimeline[existingIdx] = newDiagEntry;
-      } else {
+      const isRecentDup = currentTimeline.some(
+        (t: any) => t && t.type === 'diagnosis' && t.title === newDiagEntry.title && t.description === newDiagEntry.description && Math.abs(new Date(t.timestamp || 0).getTime() - now.getTime()) < 2000
+      );
+      if (!isRecentDup) {
         currentTimeline.push(newDiagEntry);
       }
       currentTimeline.sort((a: any, b: any) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
@@ -233,7 +233,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       if (onCaseUpdated) onCaseUpdated(updatedCaseObj);
       fetch('/api/cases', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: reqHeaders,
         body: JSON.stringify(updatedCaseObj)
       }).catch(() => {});
       setTimeout(() => setDiagnosisSuccessMsg(false), 4500);
@@ -309,9 +309,13 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
     // Guarantee that REAL AI Root-Cause Diagnosis appears in timeline if case has diagnosis
     const diagData = liveDiagnosis || caseItem.llmDiagnosis;
     const hasRealDiagEvent = events.some(
-      (t: any) => t && typeof t.title === 'string' && (
-        t.title.toLowerCase().includes('ai root-cause diagnosis') ||
-        t.title.toLowerCase().includes('ai diagnosis & decision')
+      (t: any) => t && (
+        t.type === 'diagnosis' ||
+        t.type === 'ai_diagnosis' ||
+        (typeof t.title === 'string' && (
+          t.title.toLowerCase().includes('ai root-cause diagnosis') ||
+          t.title.toLowerCase().includes('ai diagnosis & decision')
+        ))
       )
     );
 
@@ -319,7 +323,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       const diagTs = diagData.diagnosedAt || caseItem.lastDiagnosedAt || new Date().toISOString();
       const timeDisplay = formatTimelineDateTime(diagTs);
       events.push({
-        id: `t-diag-${caseItem.id}`,
+        id: `t-diag-${caseItem.id}-${Date.now()}`,
         timestamp: diagTs,
         timeDisplay,
         title: `AI Root-Cause Diagnosis (Action: ${diagData.recommendedAction || caseItem.recommendedAction})`,

@@ -480,7 +480,7 @@ export default function App() {
             // 1. Start with local timeline as base
             localTimeline.forEach(t => {
               if (!t) return;
-              const key = t.id || `${t.type}:${t.title}:${t.timeDisplay}`;
+              const key = t.id || `${t.type}:${t.title}:${t.timestamp || t.timeDisplay}`;
               if (!seen.has(key)) {
                 seen.add(key);
                 timelineMap.set(key, t);
@@ -490,11 +490,11 @@ export default function App() {
             // 2. Append new server-side timeline entries if not already present
             serverTimeline.forEach(t => {
               if (!t) return;
-              const key = t.id || `${t.type}:${t.title}:${t.timeDisplay}`;
+              const key = t.id || `${t.type}:${t.title}:${t.timestamp || t.timeDisplay}`;
               const alreadyExists = Array.from(timelineMap.values()).some(
-                e => e.id === t.id || (e.type === t.type && e.title === t.title && Math.abs(
+                e => e.id === t.id || (e.type === t.type && e.title === t.title && e.description === t.description && Math.abs(
                   new Date(e.timestamp || 0).getTime() - new Date(t.timestamp || 0).getTime()
-                ) < 120000)
+                ) < 2000)
               );
               if (!seen.has(key) && !alreadyExists) {
                 seen.add(key);
@@ -551,6 +551,25 @@ export default function App() {
 
     async function init() {
       const startTime = Date.now();
+
+      // 1. Fetch persistent cases from server database first so memory/state has saved diagnosis & timeline
+      try {
+        const resCases = await fetch('/api/cases', { headers: authHeaders });
+        const dataCases = await resCases.json();
+        if (isMounted) {
+          if (dataCases?.success && Array.isArray(dataCases.cases) && dataCases.cases.length > 0) {
+            setCases(dataCases.cases);
+            casesRef.current = dataCases.cases;
+          } else if (!user?.id) {
+            setCases(INITIAL_CASES);
+            casesRef.current = INITIAL_CASES;
+          } else {
+            setCases([]);
+            casesRef.current = [];
+          }
+        }
+      } catch {}
+
       try {
         const resMerchant = await fetch('/api/merchant', { headers: authHeaders });
         const dataMerchant = await resMerchant.json();
@@ -578,20 +597,6 @@ export default function App() {
             setPolicies(prev => ({ ...prev, ...dataPolicies.policies }));
           } else {
             setPolicies(INITIAL_POLICIES);
-          }
-        }
-      } catch {}
-
-      try {
-        const resCases = await fetch('/api/cases', { headers: authHeaders });
-        const dataCases = await resCases.json();
-        if (isMounted) {
-          if (dataCases?.success && Array.isArray(dataCases.cases) && dataCases.cases.length > 0) {
-            setCases(dataCases.cases);
-          } else if (!user?.id) {
-            setCases(INITIAL_CASES);
-          } else {
-            setCases([]);
           }
         }
       } catch {}
@@ -874,21 +879,23 @@ export default function App() {
                   ? [...data.case.timeline]
                   : (Array.isArray(nextCase.timeline) ? [...nextCase.timeline] : []);
 
-                const hasDiagInTl = updatedTimeline.some((t: any) => 
-                  t && (t.type === 'diagnosis' || (typeof t.title === 'string' && t.title.toLowerCase().includes('ai root-cause diagnosis')))
-                );
+                const newDiagEvent = {
+                  id: diagEntryId,
+                  timestamp: data.diagnosis.diagnosedAt || now.toISOString(),
+                  timeDisplay,
+                  title: `AI Root-Cause Diagnosis (Action: ${data.diagnosis.recommendedAction})`,
+                  description: `${data.diagnosis.merchantExplanation} [Optimal Window: ${data.diagnosis.optimalTimeWindow} • Expected Salvage: ${data.diagnosis.recoveryProbability}%]`,
+                  type: 'diagnosis',
+                  actionType: data.diagnosis.recommendedAction
+                };
 
-                if (!hasDiagInTl) {
-                  updatedTimeline.unshift({
-                    id: diagEntryId,
-                    timestamp: data.diagnosis.diagnosedAt || now.toISOString(),
-                    timeDisplay,
-                    title: `AI Root-Cause Diagnosis (Action: ${data.diagnosis.recommendedAction})`,
-                    description: `${data.diagnosis.merchantExplanation} [Optimal Window: ${data.diagnosis.optimalTimeWindow} • Expected Salvage: ${data.diagnosis.recoveryProbability}%]`,
-                    type: 'diagnosis',
-                    actionType: data.diagnosis.recommendedAction
-                  });
+                const isRecentDup = updatedTimeline.some(
+                  (t: any) => t && t.type === 'diagnosis' && t.title === newDiagEvent.title && t.description === newDiagEvent.description && Math.abs(new Date(t.timestamp || 0).getTime() - now.getTime()) < 2000
+                );
+                if (!isRecentDup) {
+                  updatedTimeline.push(newDiagEvent);
                 }
+                updatedTimeline.sort((a: any, b: any) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
 
                 const updatedCaseObj: RecoveryCase = {
                   ...nextCase,
@@ -911,6 +918,16 @@ export default function App() {
                   return updated;
                 });
                 setSelectedCase(prev => prev?.id === nextCase.id ? updatedCaseObj : prev);
+
+                // Persist to server database
+                fetch('/api/cases', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    ...(user?.id ? { 'x-user-id': user.id, 'x-user-email': user.email || '' } : {})
+                  },
+                  body: JSON.stringify(updatedCaseObj)
+                }).catch(() => {});
               }
             }
           } catch (caseErr) {
@@ -957,28 +974,63 @@ export default function App() {
       const targetCase = cases.find(c => c.id === customCaseId);
       if (targetCase) {
         try {
+          const authHeaders: Record<string, string> = {
+            'Content-Type': 'application/json',
+            ...(user?.id ? { 'x-user-id': user.id, 'x-user-email': user.email || '' } : {})
+          };
           const res = await fetch('/api/agent/diagnose-case', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders,
             body: JSON.stringify({ caseId: targetCase.id, caseItem: targetCase })
           });
           const data = await res.json();
           if (data?.case && data?.diagnosis) {
-            const updated = {
+            const now = new Date();
+            const timeDisplay = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const diagEntryId = `t-diag-${targetCase.id}-${Date.now()}`;
+            const currentTl = Array.isArray(data.case?.timeline) && data.case.timeline.length > 0 
+              ? [...data.case.timeline] 
+              : (Array.isArray(targetCase.timeline) ? [...targetCase.timeline] : []);
+            const newDiagEvent = {
+              id: diagEntryId,
+              timestamp: data.diagnosis.diagnosedAt || now.toISOString(),
+              timeDisplay,
+              title: `AI Root-Cause Diagnosis (Action: ${data.diagnosis.recommendedAction})`,
+              description: `${data.diagnosis.merchantExplanation} [Optimal Window: ${data.diagnosis.optimalTimeWindow} • Expected Salvage: ${data.diagnosis.recoveryProbability}%]`,
+              type: 'diagnosis',
+              actionType: data.diagnosis.recommendedAction
+            };
+            const isRecentDup = currentTl.some(
+              (t: any) => t && t.type === 'diagnosis' && t.title === newDiagEvent.title && t.description === newDiagEvent.description && Math.abs(new Date(t.timestamp || 0).getTime() - now.getTime()) < 2000
+            );
+            if (!isRecentDup) {
+              currentTl.push(newDiagEvent);
+            }
+            currentTl.sort((a: any, b: any) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+
+            const updated: RecoveryCase = {
               ...targetCase,
               ...data.case,
               llmDiagnosis: data.diagnosis,
-              lastDiagnosedAt: data.diagnosis.diagnosedAt || new Date().toISOString()
+              lastDiagnosedAt: data.diagnosis.diagnosedAt || new Date().toISOString(),
+              timeline: currentTl
             };
             setCases(prev => prev.map(c => c.id === data.case.id ? updated : c));
+            casesRef.current = casesRef.current.map(c => c.id === data.case.id ? updated : c);
             setSelectedCase(prev => prev?.id === data.case.id ? updated : prev);
+
+            fetch('/api/cases', {
+              method: 'POST',
+              headers: authHeaders,
+              body: JSON.stringify(updated)
+            }).catch(() => {});
           }
         } catch (err) {
           console.error('Error triggering diagnosis:', err);
         }
       }
     }
-  }, [cases]);
+  }, [cases, user?.id]);
 
   const handleOpenCaseById = useCallback(async (caseId: string) => {
 

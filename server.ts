@@ -1823,7 +1823,7 @@ app.get('/api/razorpay/sync', async (req, res) => {
     });
 
     // Index existing cases to preserve AI diagnosis, scheduled retries, statuses, and enriched timeline
-    const existingDbCases = await db.getCases();
+    const existingDbCases = await db.getCases(userId);
     const existingCasesPool = [...existingDbCases, ...liveCasesStore];
     const existingMap = new Map<string, any>();
 
@@ -3183,11 +3183,12 @@ Please output strictly the JSON object.`;
       actionType: diagnosisResult.recommendedAction
     };
 
-    // Check if duplicate entry in last 30s
+    // Only skip if exact identical entry was added within last 2s
     const isRecentDuplicate = caseItem.timeline.some((t: any) => 
       (t.type === 'diagnosis' || (t.title && t.title.includes('AI Root-Cause Diagnosis'))) &&
       t.title === diagEntry.title && 
-      Math.abs(new Date(t.timestamp || 0).getTime() - now.getTime()) < 30000
+      t.description === diagEntry.description &&
+      Math.abs(new Date(t.timestamp || 0).getTime() - now.getTime()) < 2000
     );
     if (!isRecentDuplicate) {
       caseItem.timeline.push(diagEntry);
@@ -3204,7 +3205,7 @@ Please output strictly the JSON object.`;
     } else {
       liveCasesStore.unshift(caseItem);
     }
-    await db.upsertCase(caseItem);
+    await db.upsertCase(caseItem, caseItem.userId);
     return diagnosisResult;
   } catch (err: any) {
     console.error(`[AI Diagnosis Engine] Error diagnosing Case ${caseItem.id}:`, err);
@@ -3566,6 +3567,7 @@ app.post('/api/agent/trigger-sweep', async (req, res) => {
 // POST endpoint to trigger on-demand case diagnosis
 app.post('/api/agent/diagnose-case', async (req, res) => {
   try {
+    const userId = getReqUserId(req);
     const { caseId, caseItem: passedCase } = req.body;
     let targetCase = liveCasesStore.find((c: any) => c.id === caseId);
     if (!targetCase && passedCase) {
@@ -3582,9 +3584,15 @@ app.post('/api/agent/diagnose-case', async (req, res) => {
     if (!targetCase) {
       return res.status(404).json({ error: `Case ${caseId} not found` });
     }
+    if (userId && !targetCase.userId) {
+      targetCase.userId = userId;
+    }
 
     addLiveAgentThought(`Manual LLM re-diagnosis executed for Case ${targetCase.id} (${targetCase.customerName})`, 'Sparkles', targetCase.id, 'LLM Diagnostics');
     const diagnosis = await performAutonomousCaseDiagnosis(targetCase);
+    if (targetCase) {
+      await db.upsertCase(targetCase, targetCase.userId || userId);
+    }
     res.json({
       success: true,
       caseId: targetCase.id,
