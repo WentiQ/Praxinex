@@ -29,6 +29,7 @@ import {
   CUSTOMER_DIRECTORY
 } from './data/mockData';
 import { RecoveryCase, ActivityEvent, MerchantProfile, RecoveryPolicy, PaymentRecord, CustomerRecord, ActiveTab } from './types';
+import { getUndiagnosedUnrecoveredCases, caseHasAIDiagnosis } from './utils/aiDiagnosisEngine';
 
 export default function App() {
   // Navigation
@@ -813,7 +814,174 @@ export default function App() {
       .catch(() => {});
   };
 
+  // Undiagnosed Unrecovered Cases Computation
+  const undiagnosedCases = useMemo(() => {
+    return getUndiagnosedUnrecoveredCases(cases);
+  }, [cases]);
+
+  const casesRef = useRef<RecoveryCase[]>(cases);
+  useEffect(() => {
+    casesRef.current = cases;
+  }, [cases]);
+
+  const [isDiagnosingBatch, setIsDiagnosingBatch] = useState<boolean>(false);
+  const [activeDiagnosingCaseId, setActiveDiagnosingCaseId] = useState<string | null>(null);
+  const isDiagnosingQueueRef = useRef<boolean>(false);
+
+  // Autonomous Sequential Diagnosis Worker: Automatically processes all undiagnosed unrecovered cases one-by-one
+  useEffect(() => {
+    if (isInitialLoading || cases.length === 0 || isDiagnosingQueueRef.current) return;
+
+    const initialUndiagnosed = getUndiagnosedUnrecoveredCases(cases);
+    if (initialUndiagnosed.length === 0) return;
+
+    isDiagnosingQueueRef.current = true;
+    setIsDiagnosingBatch(true);
+
+    (async () => {
+      try {
+        while (true) {
+          const currentList = getUndiagnosedUnrecoveredCases(casesRef.current);
+          if (currentList.length === 0) {
+            break;
+          }
+
+          const nextCase = currentList[0];
+          setActiveDiagnosingCaseId(nextCase.id);
+
+          console.log(`🤖 [Autonomous Sequential Diagnosis] Processing Case ${nextCase.id} (${nextCase.customerName}) with AI Agent... (${currentList.length} remaining)`);
+
+          try {
+            const res = await fetch('/api/agent/diagnose-case', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                caseId: nextCase.id,
+                caseItem: nextCase
+              })
+            });
+
+            if (res.ok) {
+              const data = await res.json();
+              if (data && data.diagnosis) {
+                console.log(`✅ [Autonomous Sequential Diagnosis] Successfully diagnosed Case ${nextCase.id}: ${data.diagnosis.recommendedAction} (${data.diagnosis.recoveryProbability}%)`);
+
+                const now = new Date();
+                const timeDisplay = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const diagEntryId = `t-diag-${nextCase.id}-${Date.now()}`;
+
+                const updatedTimeline = Array.isArray(data.case?.timeline) && data.case.timeline.length > 0
+                  ? [...data.case.timeline]
+                  : (Array.isArray(nextCase.timeline) ? [...nextCase.timeline] : []);
+
+                const hasDiagInTl = updatedTimeline.some((t: any) => 
+                  t && (t.type === 'diagnosis' || (typeof t.title === 'string' && t.title.toLowerCase().includes('ai root-cause diagnosis')))
+                );
+
+                if (!hasDiagInTl) {
+                  updatedTimeline.unshift({
+                    id: diagEntryId,
+                    timestamp: data.diagnosis.diagnosedAt || now.toISOString(),
+                    timeDisplay,
+                    title: `AI Root-Cause Diagnosis (Action: ${data.diagnosis.recommendedAction})`,
+                    description: `${data.diagnosis.merchantExplanation} [Optimal Window: ${data.diagnosis.optimalTimeWindow} • Expected Salvage: ${data.diagnosis.recoveryProbability}%]`,
+                    type: 'diagnosis',
+                    actionType: data.diagnosis.recommendedAction
+                  });
+                }
+
+                const updatedCaseObj: RecoveryCase = {
+                  ...nextCase,
+                  ...(data.case || {}),
+                  llmDiagnosis: data.diagnosis,
+                  aiWhy: data.diagnosis.merchantExplanation || nextCase.aiWhy,
+                  recommendedAction: data.diagnosis.recommendedAction || nextCase.recommendedAction,
+                  recoveryProbability: Number(data.diagnosis.recoveryProbability) || nextCase.recoveryProbability || 75,
+                  priorityRank: data.diagnosis.priorityRank || nextCase.priorityRank,
+                  rootCauseCategory: data.diagnosis.rootCauseCategory || nextCase.rootCauseCategory,
+                  rootCauseSubCategory: data.diagnosis.rootCauseSubCategory || nextCase.rootCauseSubCategory,
+                  lastDiagnosedAt: data.diagnosis.diagnosedAt || now.toISOString(),
+                  timeline: updatedTimeline
+                };
+
+                // Update state and immediate ref
+                setCases(prev => {
+                  const updated = prev.map(c => c.id === nextCase.id ? updatedCaseObj : c);
+                  casesRef.current = updated;
+                  return updated;
+                });
+                setSelectedCase(prev => prev?.id === nextCase.id ? updatedCaseObj : prev);
+              }
+            }
+          } catch (caseErr) {
+            console.error(`Autonomous diagnosis error for Case ${nextCase.id}:`, caseErr);
+            // Fallback so it doesn't get stuck in an infinite retry loop
+            const now = new Date();
+            const fallbackCase: RecoveryCase = {
+              ...nextCase,
+              lastDiagnosedAt: now.toISOString(),
+              timeline: [
+                ...(Array.isArray(nextCase.timeline) ? nextCase.timeline : []),
+                {
+                  id: `t-diag-${nextCase.id}-${Date.now()}`,
+                  timestamp: now.toISOString(),
+                  timeDisplay: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  title: `AI Root-Cause Diagnosis (Action: ${nextCase.recommendedAction})`,
+                  description: `${nextCase.aiWhy || 'AI failure root-cause synthesized.'}`,
+                  type: 'diagnosis',
+                  actionType: nextCase.recommendedAction
+                }
+              ]
+            };
+            setCases(prev => {
+              const updated = prev.map(c => c.id === nextCase.id ? fallbackCase : c);
+              casesRef.current = updated;
+              return updated;
+            });
+          }
+
+          // Small 350ms pause for smooth sequential pacing
+          await new Promise(r => setTimeout(r, 350));
+        }
+      } finally {
+        isDiagnosingQueueRef.current = false;
+        setIsDiagnosingBatch(false);
+        setActiveDiagnosingCaseId(null);
+      }
+    })();
+  }, [cases, isInitialLoading]);
+
+
+  const triggerAutonomousDiagnosis = useCallback(async (customCaseId?: string) => {
+    if (customCaseId) {
+      const targetCase = cases.find(c => c.id === customCaseId);
+      if (targetCase) {
+        try {
+          const res = await fetch('/api/agent/diagnose-case', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ caseId: targetCase.id, caseItem: targetCase })
+          });
+          const data = await res.json();
+          if (data?.case && data?.diagnosis) {
+            const updated = {
+              ...targetCase,
+              ...data.case,
+              llmDiagnosis: data.diagnosis,
+              lastDiagnosedAt: data.diagnosis.diagnosedAt || new Date().toISOString()
+            };
+            setCases(prev => prev.map(c => c.id === data.case.id ? updated : c));
+            setSelectedCase(prev => prev?.id === data.case.id ? updated : prev);
+          }
+        } catch (err) {
+          console.error('Error triggering diagnosis:', err);
+        }
+      }
+    }
+  }, [cases]);
+
   const handleOpenCaseById = useCallback(async (caseId: string) => {
+
     if (!caseId) return;
     const clean = caseId.trim();
 
@@ -953,6 +1121,8 @@ export default function App() {
               onViewActivity={() => setCurrentTab('activity')}
               onViewAllCases={() => setCurrentTab('cases')}
               onExecuteAction={handleStartExecuteAction}
+              onDiagnoseAllUndiagnosed={triggerAutonomousDiagnosis}
+              isDiagnosingBatch={isDiagnosingBatch}
             />
           )}
 
@@ -975,8 +1145,13 @@ export default function App() {
               cases={cases}
               onOpenCase={handleOpenCase}
               onExecuteAction={handleStartExecuteAction}
+              onDiagnoseAllUndiagnosed={triggerAutonomousDiagnosis}
+              isDiagnosingBatch={isDiagnosingBatch}
+              undiagnosedCases={undiagnosedCases}
             />
           )}
+
+
 
           {currentTab === 'scheduled' && (
             <ScheduledActionsView

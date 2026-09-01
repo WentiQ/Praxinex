@@ -24,8 +24,8 @@ import {
 } from 'recharts';
 import { RecoveryCase } from '../types';
 import { formatINR, formatCaseTimeAgo } from '../utils/formatters';
-import { normalizeFailureCode } from '../utils/aiDiagnosisEngine';
-import { Cpu, UserCheck } from 'lucide-react';
+import { normalizeFailureCode, caseHasAIDiagnosis } from '../utils/aiDiagnosisEngine';
+import { Cpu, UserCheck, RefreshCw } from 'lucide-react';
 
 interface OverviewViewProps {
   cases: RecoveryCase[];
@@ -40,6 +40,8 @@ interface OverviewViewProps {
   onViewActivity: () => void;
   onViewAllCases: () => void;
   onExecuteAction: (caseItem: RecoveryCase) => void;
+  onDiagnoseAllUndiagnosed?: (caseIds?: string[]) => void;
+  isDiagnosingBatch?: boolean;
 }
 
 export const OverviewView: React.FC<OverviewViewProps> = ({
@@ -54,8 +56,11 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   onOpenCase,
   onViewActivity,
   onViewAllCases,
-  onExecuteAction
+  onExecuteAction,
+  onDiagnoseAllUndiagnosed,
+  isDiagnosingBatch = false
 }) => {
+
   const getCaseExpectedRecovery = (c: RecoveryCase): number => {
     if (c.expectedRecoveryValue !== undefined) return c.expectedRecoveryValue;
     const prob = c.recoveryProbability || 75;
@@ -236,8 +241,40 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
         </div>
       </section>
 
+      {/* Undiagnosed Cases Autonomous AI Diagnosis Status Notice */}
+      {cases.filter(c => c.status !== 'Recovered' && !caseHasAIDiagnosis(c)).length > 0 && (
+        <div className="bg-gradient-to-r from-purple-900/10 via-indigo-900/5 to-purple-900/10 border border-purple-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-lg bg-purple-600 text-white flex items-center justify-center shadow-xs shrink-0">
+              <Sparkles className="w-5 h-5 animate-spin" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-xs font-bold text-neutral-900">
+                  Autonomous AI Diagnosis Active ({cases.filter(c => c.status !== 'Recovered' && !caseHasAIDiagnosis(c)).length} Cases Identified)
+                </h3>
+                <span className="text-[10px] font-mono font-semibold bg-purple-100 text-purple-800 px-2 py-0.5 rounded">
+                  Autonomous Sentinel
+                </span>
+              </div>
+              <p className="text-[11px] text-neutral-600 mt-0.5">
+                Praxinex AI is automatically analyzing transaction failure codes and timeline histories sequentially in the background.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="px-3 py-1.5 bg-purple-100/90 border border-purple-300 text-purple-950 text-xs font-mono font-semibold rounded-lg flex items-center space-x-2 shadow-2xs">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-purple-700" />
+              <span>Diagnosing one by one ({cases.filter(c => c.status !== 'Recovered' && !caseHasAIDiagnosis(c)).length} pending)...</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+
       {/* Main Two-Column Section: Trend Chart & AI Agent Status */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-6" id="charts-and-agent-status">
+
         {/* Left (2 cols): Revenue Recovery Trend Chart */}
         <div 
           id="revenue-trend-card"

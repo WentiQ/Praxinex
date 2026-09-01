@@ -7,9 +7,10 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { db } from './server/db.js';
-import { normalizeFailureCode, calculatePredictiveRecoveryScore } from './src/utils/aiDiagnosisEngine.js';
+import { normalizeFailureCode, calculatePredictiveRecoveryScore, caseHasAIDiagnosis, getUndiagnosedUnrecoveredCases } from './src/utils/aiDiagnosisEngine';
 
 dotenv.config();
+
 
 const currentDir = process.cwd();
 
@@ -3334,23 +3335,8 @@ function enqueueCaseForDiagnosis(caseId: string, force: boolean = false) {
   processNextDiagnosisQueueItem();
 }
 
-function caseHasAIDiagnosis(c: any): boolean {
-  if (!c) return false;
-  if (!Array.isArray(c.timeline) || c.timeline.length === 0) return false;
-  return c.timeline.some((t: any) => 
-    t && 
-    typeof t.title === 'string' &&
-    !t.title.includes('AI strategy evaluated') &&
-    (
-      t.type === 'ai_diagnosis' ||
-      t.title.toLowerCase().includes('ai root-cause diagnosis') ||
-      t.title.toLowerCase().includes('ai diagnosis & decision') ||
-      (t.type === 'diagnosis' && !t.title.includes('AI strategy evaluated'))
-    )
-  );
-}
-
 async function processNextDiagnosisQueueItem() {
+
   if (isProcessingDiagnosisQueue || aiDiagnosisQueue.length === 0) return;
   isProcessingDiagnosisQueue = true;
 
@@ -3532,8 +3518,27 @@ async function runInitialPriorityBatchDiagnosis(force = false) {
   }
 }
 
+// -------------------------------------------------------------
+// AUTONOMOUS CONTINUOUS DIAGNOSIS SENTINEL
+// Automatically identifies all unrecovered cases lacking AI Diagnosis in timeline and auto-enqueues them one by one without waiting for permission
+// -------------------------------------------------------------
+setInterval(() => {
+  try {
+    const undiagnosed = getUndiagnosedUnrecoveredCases(liveCasesStore);
+    if (undiagnosed.length > 0) {
+      for (const c of undiagnosed) {
+        if (!aiDiagnosisQueue.includes(c.id)) {
+          console.log(`🤖 [Autonomous Sentinel] Automatically enqueuing undiagnosed Case ${c.id} (${c.customerName}) for sequential AI Diagnosis...`);
+          enqueueCaseForDiagnosis(c.id);
+        }
+      }
+    }
+  } catch {}
+}, 4000);
+
 // GET live agent radar status & real-time thought stream
 app.get('/api/agent/live-status', (req, res) => {
+
   const schedCount = liveCasesStore.filter((c: any) => c.status === 'Scheduled').length;
   const awaitCount = liveCasesStore.filter((c: any) => c.status === 'Awaiting payment' && c.responseWindowDeadline).length;
   const diagCount = liveCasesStore.filter((c: any) => c.llmDiagnosis || c.lastDiagnosedAt).length;
@@ -3591,15 +3596,45 @@ app.post('/api/agent/diagnose-case', async (req, res) => {
   }
 });
 
-// POST endpoint to trigger full AI diagnosis on all existing unrecovered cases
+// GET endpoint to query all unrecovered cases lacking AI Diagnosis in their timeline
+app.get('/api/agent/undiagnosed-cases', (req, res) => {
+  try {
+    const undiagnosed = getUndiagnosedUnrecoveredCases(liveCasesStore);
+    res.json({
+      success: true,
+      count: undiagnosed.length,
+      cases: undiagnosed
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to query undiagnosed cases' });
+  }
+});
+
+// POST endpoint to trigger full AI diagnosis on identified unrecovered cases lacking AI Diagnosis in their timeline
 app.post('/api/agent/run-all-diagnostics', async (req, res) => {
   try {
-    const unrecovered = liveCasesStore.filter((c: any) => c.status !== 'Recovered');
-    const undiagnosed = unrecovered.filter((c: any) => !caseHasAIDiagnosis(c));
-    const targetCases = undiagnosed.length > 0 ? undiagnosed : unrecovered;
+    const { caseIds, forceAll } = req.body || {};
+    let targetCases: any[] = [];
 
-    console.log(`🤖 [Startup AI Diagnosis] Running LLM diagnosis on ${targetCases.length} cases lacking 'AI Root-Cause Diagnosis' in timeline...`);
-    addLiveAgentThought(`Initiating comprehensive AI diagnosis on ${targetCases.length} cases lacking 'AI Root-Cause Diagnosis' in timeline...`, 'Bot', undefined, 'Initial Diagnostic Sweep');
+    if (Array.isArray(caseIds) && caseIds.length > 0) {
+      targetCases = liveCasesStore.filter((c: any) => caseIds.includes(c.id) && c.status !== 'Recovered');
+    } else if (forceAll) {
+      targetCases = liveCasesStore.filter((c: any) => c.status !== 'Recovered');
+    } else {
+      targetCases = getUndiagnosedUnrecoveredCases(liveCasesStore);
+    }
+
+    if (targetCases.length === 0) {
+      return res.json({
+        success: true,
+        message: 'All active recovery cases already have AI Diagnosis in their timeline.',
+        casesCount: 0,
+        caseIds: []
+      });
+    }
+
+    console.log(`🤖 [AI Diagnosis Sweep] Running AI diagnosis on ${targetCases.length} cases lacking 'AI Root-Cause Diagnosis' in timeline...`);
+    addLiveAgentThought(`Initiating AI diagnosis sweep on ${targetCases.length} unrecovered cases lacking timeline diagnosis...`, 'Bot', undefined, 'Diagnostic Sweep');
     
     // Sort by priority rank: Critical -> High -> Medium -> Low
     const priorityWeight: Record<string, number> = {
@@ -3616,19 +3651,24 @@ app.post('/api/agent/run-all-diagnostics', async (req, res) => {
       return (b.amount || 0) - (a.amount || 0);
     });
 
+    const enqueuedIds: string[] = [];
     for (const c of sortedCases) {
-      enqueueCaseForDiagnosis(c.id);
+      enqueueCaseForDiagnosis(c.id, true);
+      enqueuedIds.push(c.id);
     }
 
     res.json({
       success: true,
-      message: `Enqueued ${targetCases.length} cases for priority AI diagnostics`,
-      casesCount: targetCases.length
+      message: `Enqueued ${targetCases.length} unrecovered cases for autonomous AI diagnosis`,
+      casesCount: targetCases.length,
+      caseIds: enqueuedIds,
+      cases: sortedCases
     });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Failed to trigger batch diagnostics' });
   }
 });
+
 
 // -------------------------------------------------------------
 // AUTONOMOUS RESPONSE WINDOW WATCHER (Expiry Re-diagnosis Loop)
@@ -5151,13 +5191,14 @@ app.post('/api/agent/chat', async (req, res) => {
         const diagMatch = rawText.match(/\[\[ACTION:DIAGNOSE:([a-zA-Z0-9_-]+)\]\]/i);
         if (diagMatch && diagMatch[1]) {
           const targetArg = diagMatch[1].toUpperCase();
-          if (targetArg === 'ALL') {
-            const unrecovered = cases.filter((c: any) => c.status !== 'Recovered');
-            for (const uc of unrecovered) {
+          if (targetArg === 'ALL' || targetArg === 'UNDIAGNOSED') {
+            const undiagnosed = getUndiagnosedUnrecoveredCases(cases);
+            const targetCases = undiagnosed.length > 0 ? undiagnosed : cases.filter((c: any) => c.status !== 'Recovered');
+            for (const uc of targetCases) {
               await performAutonomousCaseDiagnosis(uc);
               db.upsertCase(uc).catch(() => {});
             }
-            caseCards = unrecovered;
+            caseCards = targetCases;
             hasMutations = true;
           } else {
             const targetCase = cases.find((c: any) => c.id.toLowerCase().includes(targetArg.toLowerCase()));
@@ -5169,6 +5210,7 @@ app.post('/api/agent/chat', async (req, res) => {
           }
           rawText = rawText.replace(/\[\[ACTION:DIAGNOSE:[a-zA-Z0-9_-]+\]\]/gi, '').trim();
         }
+
 
         // 13. Simulate Payment Failure
         const simMatch = rawText.match(/\[\[ACTION:SIMULATE_FAILURE:(.+)\]\]/i);
@@ -5410,15 +5452,22 @@ app.post('/api/agent/chat', async (req, res) => {
         reply = `Manually settled case **${targetCase.id}** for **₹${targetCase.amount.toLocaleString('en-IN')}**. Revenue is marked as recovered.`;
       }
     } else if (queryLower.includes('diagnose') || queryLower.includes('diagnosis')) {
-      const unrecovered = cases.filter((c: any) => c.status !== 'Recovered');
-      for (const uc of unrecovered) {
+      const undiagnosed = getUndiagnosedUnrecoveredCases(cases);
+      const targetCases = undiagnosed.length > 0 ? undiagnosed : cases.filter((c: any) => c.status !== 'Recovered');
+      
+      for (const uc of targetCases) {
         await performAutonomousCaseDiagnosis(uc);
         db.upsertCase(uc).catch(() => {});
       }
-      caseCards = unrecovered;
+      caseCards = targetCases;
       hasMutations = true;
-      reply = `Completed AI root-cause failure diagnosis across all ${unrecovered.length} active recovery cases. Explanations, risk scores, and recommended actions have been updated.`;
+      if (undiagnosed.length > 0) {
+        reply = `Identified **${undiagnosed.length} unrecovered cases** lacking AI Root-Cause Diagnosis in their timeline. Praxinex has automatically performed AI diagnosis on all ${undiagnosed.length} cases. Root causes, optimal recovery rails, and timelines have been updated.`;
+      } else {
+        reply = `All active recovery cases already have AI Diagnosis recorded in their timeline. Re-evaluated and updated diagnostic telemetry across all **${targetCases.length} active recovery cases**.`;
+      }
     } else {
+
       reply = `Hello! I am **Praxinex**, your autonomous AI Revenue Recovery Agent.\n\nTo enable full natural language conversation, deep reasoning, and autonomous execution, please add your **Gemini API Key** in the **Integrations** tab.\n\nHere is your current live platform summary:\n• **Total Revenue at Risk**: ₹${totalAtRisk.toLocaleString('en-IN')} across ${activeCasesCount} active cases\n• **Total Recovered Revenue**: ₹${totalRecovered.toLocaleString('en-IN')}\n• **Recovery Rate**: ${recoveryRate}%\n• **Cases Monitored**: ${cases.length} cases`;
       actions.push({
         id: 'nav-integrations',

@@ -37,6 +37,7 @@ interface PraxinexChatProps {
 }
 
 const DEFAULT_PROMPTS = [
+  'Identify and auto-diagnose all unrecovered cases lacking AI diagnosis',
   'Schedule optimal-timing retry for pending cases',
   'Repair mandate for lapsed subscriptions',
   'Generate payment link for Dinesh',
@@ -44,6 +45,7 @@ const DEFAULT_PROMPTS = [
   'What is our total revenue at risk?',
   'Why did case RC-SUB-1082 fail?'
 ];
+
 
 export const PraxinexChat: React.FC<PraxinexChatProps> = ({
   isOpen,

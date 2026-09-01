@@ -264,6 +264,22 @@ export const PraxinexView: React.FC<PraxinexViewProps> = ({
 
             <div className="space-y-3">
               <div 
+                onClick={() => handleSendMessage('Identify all unrecovered cases lacking AI Diagnosis in timeline and auto-diagnose them')}
+                className="p-3 bg-purple-50/60 hover:bg-purple-100/70 border border-purple-200 rounded-xl cursor-pointer transition-colors space-y-1"
+              >
+                <div className="flex items-center justify-between text-xs font-semibold text-purple-950">
+                  <span className="flex items-center space-x-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Auto-Diagnose Undiagnosed Cases</span>
+                  </span>
+                  <ArrowRight className="w-3 h-3 text-purple-400" />
+                </div>
+                <p className="text-[11px] text-purple-800/80">
+                  Identifies cases lacking timeline AI diagnosis and executes automated Gemini root-cause diagnosis.
+                </p>
+              </div>
+
+              <div 
                 onClick={() => handleSendMessage('Generate payment link for Dinesh')}
                 className="p-3 bg-[#F8F9FA] hover:bg-neutral-100 border border-[#E7E7E7] rounded-xl cursor-pointer transition-colors space-y-1"
               >
@@ -278,6 +294,7 @@ export const PraxinexView: React.FC<PraxinexViewProps> = ({
                   Calls Razorpay API to generate a frictionless 1-click dynamic link for customer settlement.
                 </p>
               </div>
+
 
               <div 
                 onClick={() => handleSendMessage('What is our total revenue at risk and which case is largest?')}

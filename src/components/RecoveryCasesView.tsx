@@ -23,19 +23,26 @@ import {
 } from 'lucide-react';
 import { RecoveryCase, RiskLevel, IssueType, CaseStatus, RootCauseCategory } from '../types';
 import { formatINR, formatCaseTimeAgo } from '../utils/formatters';
-import { normalizeFailureCode, calculatePredictiveRecoveryScore } from '../utils/aiDiagnosisEngine';
+import { normalizeFailureCode, calculatePredictiveRecoveryScore, caseHasAIDiagnosis } from '../utils/aiDiagnosisEngine';
 
 interface RecoveryCasesViewProps {
   cases: RecoveryCase[];
   onOpenCase: (caseItem: RecoveryCase) => void;
   onExecuteAction: (caseItem: RecoveryCase) => void;
+  onDiagnoseAllUndiagnosed?: (caseIds?: string[]) => void;
+  isDiagnosingBatch?: boolean;
+  undiagnosedCases?: RecoveryCase[];
 }
 
 export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
   cases,
   onOpenCase,
-  onExecuteAction
+  onExecuteAction,
+  onDiagnoseAllUndiagnosed,
+  isDiagnosingBatch = false,
+  undiagnosedCases
 }) => {
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRisk, setSelectedRisk] = useState<string>('all');
   const [selectedIssue, setSelectedIssue] = useState<string>('all');
@@ -135,6 +142,7 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
         matchesStatus = c.status === selectedStatus;
       }
 
+
       return matchesSearch && matchesRisk && matchesIssue && matchesCategory && matchesStatus;
     })
     .sort((a, b) => {
@@ -178,6 +186,7 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
   const needsReviewCount = cases.filter(c => c.status === 'Needs review').length;
   const awaitingCount = cases.filter(c => c.status === 'Awaiting payment' || c.status === 'In progress').length;
   const recoveredCount = cases.filter(c => c.status === 'Recovered').length;
+  const undiagnosedCount = cases.filter(c => c.status !== 'Recovered' && !caseHasAIDiagnosis(c)).length;
 
   const technicalCount = cases.filter(c => getCaseCategory(c) === 'Technical').length;
   const behavioralCount = cases.filter(c => getCaseCategory(c) === 'Behavioral').length;
@@ -251,6 +260,7 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
               </span>
             </button>
 
+
             <button
               onClick={() => setSelectedStatus('Awaiting payment')}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center space-x-1.5 cursor-pointer ${
@@ -279,6 +289,7 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
               </span>
             </button>
           </div>
+
 
           {/* Root-Cause Category Filter Pills */}
           <div className="flex items-center space-x-1.5 text-xs bg-neutral-100 p-1 rounded-lg border border-neutral-200">
@@ -397,8 +408,40 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
         </div>
       </div>
 
+      {/* Undiagnosed Unrecovered Cases Autonomous AI Diagnosis Banner */}
+      {undiagnosedCount > 0 && (
+        <div className="bg-gradient-to-r from-purple-900/10 via-indigo-900/5 to-purple-900/10 border border-purple-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-lg bg-purple-600 text-white flex items-center justify-center shadow-xs shrink-0">
+              <Sparkles className="w-5 h-5 animate-spin" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-xs font-bold text-neutral-900">
+                  Autonomous AI Diagnosis in Progress ({undiagnosedCount} Cases Identified)
+                </h3>
+                <span className="text-[10px] font-mono font-semibold bg-purple-100 text-purple-800 px-2 py-0.5 rounded">
+                  Autonomous Pipeline
+                </span>
+              </div>
+              <p className="text-[11px] text-neutral-600 mt-0.5">
+                Praxinex AI has automatically identified active cases lacking root-cause diagnosis and is diagnosing them one by one in the background.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="px-3 py-1.5 bg-purple-100/90 border border-purple-300 text-purple-950 text-xs font-mono font-semibold rounded-lg flex items-center space-x-2 shadow-2xs">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-purple-700" />
+              <span>Diagnosing one by one ({undiagnosedCount} pending)...</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+
       {/* Main Cases Table */}
       <div className="bg-white border border-[#E7E7E7] rounded-xl shadow-2xs overflow-hidden">
+
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
@@ -544,7 +587,7 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
                         </div>
                       </td>
 
-                      {/* Recommended Action */}
+                      {/* Recommended Action / AI Diagnosis */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center space-x-1.5">
                           {isRecovered ? (
@@ -552,6 +595,16 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
                               <CheckCircle2 className="w-3 h-3 text-emerald-600 mr-0.5" />
                               <span>Settled</span>
                             </span>
+                          ) : !caseHasAIDiagnosis(c) ? (
+                            <div className="space-y-0.5">
+                              <span className="inline-flex items-center space-x-1 text-[10px] font-mono font-semibold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                                <Sparkles className="w-2.5 h-2.5 text-purple-600 animate-pulse" />
+                                <span>Pending Diagnosis</span>
+                              </span>
+                              <span className="block text-[11px] text-neutral-500">
+                                {c.recommendedAction}
+                              </span>
+                            </div>
                           ) : (
                             <span className={`font-medium text-xs ${
                               c.recommendedAction === 'Mandate repair' 
@@ -565,6 +618,7 @@ export const RecoveryCasesView: React.FC<RecoveryCasesViewProps> = ({
                           )}
                         </div>
                       </td>
+
 
                       {/* Probability */}
                       <td className="py-3.5 px-4 font-mono">

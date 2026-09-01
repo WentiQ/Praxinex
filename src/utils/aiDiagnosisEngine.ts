@@ -728,3 +728,31 @@ export function buildDeterministicLLMDiagnosis(
     diagnosedAt: now.toISOString()
   };
 }
+
+/**
+ * Checks whether a recovery case has had an AI Root-Cause Diagnosis done at least once in its timeline.
+ */
+export function caseHasAIDiagnosis(c: any): boolean {
+  if (!c) return false;
+  if (!Array.isArray(c.timeline) || c.timeline.length === 0) return false;
+  return c.timeline.some((t: any) => 
+    t && 
+    typeof t.title === 'string' &&
+    !t.title.includes('AI strategy evaluated') &&
+    (
+      t.type === 'ai_diagnosis' ||
+      t.title.toLowerCase().includes('ai root-cause diagnosis') ||
+      t.title.toLowerCase().includes('ai diagnosis & decision') ||
+      (t.type === 'diagnosis' && !t.title.includes('AI strategy evaluated'))
+    )
+  );
+}
+
+/**
+ * Identifies all unrecovered recovery cases that do not have an AI Diagnosis in their timeline.
+ */
+export function getUndiagnosedUnrecoveredCases(cases: any[]): any[] {
+  if (!Array.isArray(cases)) return [];
+  return cases.filter((c: any) => c && c.status !== 'Recovered' && !caseHasAIDiagnosis(c));
+}
+
