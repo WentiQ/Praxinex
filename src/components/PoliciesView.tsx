@@ -24,6 +24,11 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
   const [form, setForm] = useState<RecoveryPolicy>(policy);
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
 
+  // Keep policy form state in sync with prop updates and resets
+  React.useEffect(() => {
+    setForm(policy);
+  }, [policy]);
+
   const handleChange = <K extends keyof RecoveryPolicy>(key: K, value: RecoveryPolicy[K]) => {
     setForm(prev => ({ ...prev, [key]: value }));
   };

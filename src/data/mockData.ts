@@ -4,11 +4,11 @@ import lastNames from '../../data/last_names.json';
 
 export const INITIAL_MERCHANT: MerchantProfile = {
   id: 'mer_default',
-  name: 'Enterprise Merchant',
-  email: 'finance@enterprise.in',
+  name: '',
+  email: '',
   currency: 'INR',
-  businessType: 'SaaS & Enterprise Operations',
-  plan: 'Enterprise Operations',
+  businessType: '',
+  plan: 'Starter Plan',
   razorpayKeyId: '',
   razorpayKeySecret: '',
   isTestMode: true,

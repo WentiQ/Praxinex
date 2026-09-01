@@ -23,18 +23,35 @@ app.use(express.json({
   }
 }));
 
+// User ID Extractor for Request-Scoped Multi-Tenant Database Operations
+function getReqUserId(req: any): string | undefined {
+  const headerUser = req.headers['x-user-id'] || req.headers['x-user-email'] || req.headers['x-account-id'];
+  if (headerUser && typeof headerUser === 'string' && headerUser.trim()) {
+    return headerUser.trim();
+  }
+  const queryUser = req.query?.userId || req.query?.user_id || req.query?.email;
+  if (queryUser && typeof queryUser === 'string' && queryUser.trim()) {
+    return queryUser.trim();
+  }
+  const bodyUser = req.body?.userId || req.body?.user_id || req.body?.email;
+  if (bodyUser && typeof bodyUser === 'string' && bodyUser.trim()) {
+    return bodyUser.trim();
+  }
+  return undefined;
+}
+
 // Merchant Credentials Loader - Strictly resolves from User Database or Active Request
-async function getActiveMerchantCredentials(customKeyId?: string, customKeySecret?: string): Promise<{ keyId: string; keySecret: string }> {
+async function getActiveMerchantCredentials(customKeyId?: string, customKeySecret?: string, userId?: string): Promise<{ keyId: string; keySecret: string }> {
   if (customKeyId && customKeySecret && customKeyId.trim() && customKeySecret.trim()) {
     return { keyId: customKeyId.trim(), keySecret: customKeySecret.trim() };
   }
-  const dbMerchant = await db.getMerchant();
+  const dbMerchant = await db.getMerchant(userId);
   const keyId = customKeyId?.trim() || dbMerchant?.razorpayKeyId?.trim() || process.env.RAZORPAY_KEY_ID?.trim() || process.env.VITE_RAZORPAY_KEY_ID?.trim() || '';
   const keySecret = customKeySecret?.trim() || dbMerchant?.razorpayKeySecret?.trim() || process.env.RAZORPAY_KEY_SECRET?.trim() || process.env.VITE_RAZORPAY_KEY_SECRET?.trim() || '';
   return { keyId, keySecret };
 }
 
-async function getActiveGeminiApiKey(customApiKey?: string): Promise<string> {
+async function getActiveGeminiApiKey(customApiKey?: string, userId?: string): Promise<string> {
   if (customApiKey && customApiKey.trim()) {
     return customApiKey.trim();
   }
@@ -43,7 +60,7 @@ async function getActiveGeminiApiKey(customApiKey?: string): Promise<string> {
     return envKey.trim();
   }
   try {
-    const dbMerchant = await db.getMerchant();
+    const dbMerchant = await db.getMerchant(userId);
     return dbMerchant?.geminiApiKey?.trim() || '';
   } catch {
     return '';
@@ -833,23 +850,25 @@ app.get('/api/db/status', (_req, res) => {
 });
 
 // Merchant Profile Cloud Persistence Endpoints
-app.get('/api/merchant', async (_req, res) => {
-  const profile = await db.getMerchant();
+app.get('/api/merchant', async (req, res) => {
+  const userId = getReqUserId(req);
+  const profile = await db.getMerchant(userId);
   res.json({ success: true, profile });
 });
 
 app.post('/api/merchant', async (req, res) => {
+  const userId = getReqUserId(req);
   const profile = req.body;
   if (profile) {
-    const currentMerchant = await db.getMerchant();
+    const currentMerchant = await db.getMerchant(userId);
     const isKeyChanged = currentMerchant?.razorpayKeyId && profile.razorpayKeyId && currentMerchant.razorpayKeyId !== profile.razorpayKeyId;
-    await db.saveMerchant(profile);
+    await db.saveMerchant(profile, userId);
     if (isKeyChanged) {
       // Clear old account caches immediately to switch cleanly to the new credentials
       liveCasesStore = [];
       livePaymentsStore = [];
       liveActivitiesStore = [];
-      await db.clearAllData();
+      await db.clearAllData(userId);
       hasRunInitialBatchDiagnosis = false; // Reset so new merchant account gets full initial diagnosis
       console.log(`🔑 Merchant credentials updated: Switched active Razorpay account to Key ID ${profile.razorpayKeyId}`);
       setTimeout(() => {
@@ -861,22 +880,25 @@ app.post('/api/merchant', async (req, res) => {
 });
 
 // Policies Cloud Persistence Endpoints
-app.get('/api/policies', async (_req, res) => {
-  const policies = await db.getPolicies();
+app.get('/api/policies', async (req, res) => {
+  const userId = getReqUserId(req);
+  const policies = await db.getPolicies(userId);
   res.json({ success: true, policies });
 });
 
 app.post('/api/policies', async (req, res) => {
+  const userId = getReqUserId(req);
   const policies = req.body;
   if (policies) {
-    await db.savePolicies(policies);
+    await db.savePolicies(policies, userId);
   }
   res.json({ success: true, policies });
 });
 
 // Cases Cloud Persistence Endpoints
-app.get('/api/cases', async (_req, res) => {
-  const cases = await db.getCases();
+app.get('/api/cases', async (req, res) => {
+  const userId = getReqUserId(req);
+  const cases = await db.getCases(userId);
   sanitizeCasePaymentUrls(cases);
   const getCaseLatestMs = (c: any): number => {
     let latest = 0;
@@ -897,8 +919,10 @@ app.get('/api/cases', async (_req, res) => {
 });
 
 app.post('/api/cases', async (req, res) => {
+  const userId = getReqUserId(req);
   const caseItem = req.body;
   if (caseItem && caseItem.id) {
+    if (userId && !caseItem.userId) caseItem.userId = userId;
     sanitizeCasePaymentUrls([caseItem]);
     const existingIdx = liveCasesStore.findIndex((c: any) => c.id === caseItem.id);
     const existingCase = existingIdx >= 0 ? liveCasesStore[existingIdx] : null;
@@ -909,7 +933,7 @@ app.post('/api/cases', async (req, res) => {
     } else {
       liveCasesStore.unshift(caseItem);
     }
-    await db.upsertCase(caseItem);
+    await db.upsertCase(caseItem, userId);
 
     // If timeline was updated and case is not recovered, automatically run AI LLM diagnosis
     if (caseItem.status !== 'Recovered' && timelineChanged) {
@@ -922,9 +946,11 @@ app.post('/api/cases', async (req, res) => {
 });
 
 app.put('/api/cases/:id', async (req, res) => {
+  const userId = getReqUserId(req);
   const caseItem = req.body;
   if (caseItem) {
     caseItem.id = req.params.id;
+    if (userId && !caseItem.userId) caseItem.userId = userId;
     sanitizeCasePaymentUrls([caseItem]);
     const existingIdx = liveCasesStore.findIndex((c: any) => c.id === caseItem.id);
     const existingCase = existingIdx >= 0 ? liveCasesStore[existingIdx] : null;
@@ -935,7 +961,7 @@ app.put('/api/cases/:id', async (req, res) => {
     } else {
       liveCasesStore.unshift(caseItem);
     }
-    await db.upsertCase(caseItem);
+    await db.upsertCase(caseItem, userId);
 
     // If timeline was updated and case is not recovered, automatically run AI LLM diagnosis
     if (caseItem.status !== 'Recovered' && timelineChanged) {
@@ -948,6 +974,7 @@ app.put('/api/cases/:id', async (req, res) => {
 // Dedicated endpoint to append a timeline event to a case & auto-trigger AI LLM diagnosis
 app.post('/api/cases/:id/timeline', async (req, res) => {
   try {
+    const userId = getReqUserId(req);
     const caseId = req.params.id;
     const event = req.body;
     if (!event || !event.title) {
@@ -956,7 +983,7 @@ app.post('/api/cases/:id/timeline', async (req, res) => {
 
     let targetCase = liveCasesStore.find((c: any) => c.id === caseId);
     if (!targetCase) {
-      const dbCases = await db.getCases();
+      const dbCases = await db.getCases(userId);
       targetCase = dbCases.find((c: any) => c.id === caseId);
       if (targetCase) liveCasesStore.unshift(targetCase);
     }
@@ -982,7 +1009,7 @@ app.post('/api/cases/:id/timeline', async (req, res) => {
     targetCase.timelineUpdatedAt = now.toISOString();
     targetCase.updated = 'Just now';
 
-    await db.upsertCase(targetCase);
+    await db.upsertCase(targetCase, userId);
 
     // If case is not recovered, automatically run AI LLM diagnosis for this recovery case
     if (targetCase.status !== 'Recovered') {
@@ -997,6 +1024,7 @@ app.post('/api/cases/:id/timeline', async (req, res) => {
 
 // Direct Checkout Settlement Endpoint
 app.post('/api/cases/:id/settle', async (req, res) => {
+  const userId = getReqUserId(req);
   const caseId = req.params.id;
   const { amount, customerName, customerEmail } = req.body;
   const now = new Date();
@@ -1021,7 +1049,7 @@ app.post('/api/cases/:id/settle', async (req, res) => {
       type: 'success',
       actionType: 'Payment captured'
     });
-    await db.upsertCase(targetCase);
+    await db.upsertCase(targetCase, userId);
   }
 
   const captureActivity = {
@@ -1038,10 +1066,11 @@ app.post('/api/cases/:id/settle', async (req, res) => {
     policy: 'Live customer settlement confirmed',
     result: `Recovered ₹${Number(amount || targetCase?.amount || 0).toLocaleString('en-IN')}`,
     resultStatus: 'success',
-    details: `Captured via Razorpay Gateway`
+    details: `Captured via Razorpay Gateway`,
+    userId
   };
   liveActivitiesStore = [captureActivity, ...liveActivitiesStore];
-  await db.addActivity(captureActivity);
+  await db.addActivity(captureActivity, userId);
 
   const newPayment = {
     id: paymentId,
@@ -1056,26 +1085,45 @@ app.post('/api/cases/:id/settle', async (req, res) => {
     createdAt: timeDisplay,
     isoTimestamp: now.toISOString(),
     description: `Recovery: Case ${caseId}`,
-    caseId
+    caseId,
+    userId
   };
   livePaymentsStore = [newPayment, ...livePaymentsStore];
-  await db.addPayment(newPayment);
+  await db.addPayment(newPayment, userId);
 
   res.json({ success: true, paymentId, status: 'Recovered', caseId });
 });
 
 // Activities Cloud Persistence Endpoints
-app.get('/api/activities', async (_req, res) => {
-  const activities = await db.getActivities();
+app.get('/api/activities', async (req, res) => {
+  const userId = getReqUserId(req);
+  const activities = await db.getActivities(userId);
   res.json({ success: true, activities });
 });
 
 app.post('/api/activities', async (req, res) => {
+  const userId = getReqUserId(req);
   const activity = req.body;
   if (activity) {
-    await db.addActivity(activity);
+    await db.addActivity(activity, userId);
   }
   res.json({ success: true, activity });
+});
+
+// Payments Ledger Persistence Endpoints
+app.get('/api/payments', async (req, res) => {
+  const userId = getReqUserId(req);
+  const payments = await db.getPayments(userId);
+  res.json({ success: true, payments });
+});
+
+app.post('/api/payments', async (req, res) => {
+  const userId = getReqUserId(req);
+  const payment = req.body;
+  if (payment) {
+    await db.addPayment(payment, userId);
+  }
+  res.json({ success: true, payment });
 });
 
 // AI Diagnosis Endpoint
@@ -1441,10 +1489,11 @@ app.get('/api/razorpay/plans', async (req, res) => {
 // Comprehensive Real Razorpay Sync Endpoint
 app.get('/api/razorpay/sync', async (req, res) => {
   try {
-    const { keyId, keySecret } = await getActiveMerchantCredentials(req.query.keyId as string, req.query.keySecret as string);
+    const userId = getReqUserId(req);
+    const { keyId, keySecret } = await getActiveMerchantCredentials(req.query.keyId as string, req.query.keySecret as string, userId);
     const isReset = req.query.reset === 'true';
 
-    console.log(`🔄 Syncing live data from Razorpay API with Key ID: ${keyId || '(none)'} (isReset: ${isReset})...`);
+    console.log(`🔄 Syncing live data from Razorpay API with Key ID: ${keyId || '(none)'} (userId: ${userId || 'guest'}, isReset: ${isReset})...`);
 
     if (!keyId || !keySecret) {
       return res.json({
@@ -1482,7 +1531,7 @@ app.get('/api/razorpay/sync', async (req, res) => {
       return `${dateStr}, ${timeStr}`;
     };
 
-    const dbMerchant = await db.getMerchant();
+    const dbMerchant = await db.getMerchant(userId);
     const companyNameFallback = dbMerchant?.name || 'Enterprise Customer';
 
     // 1. Map Real Invoices to Recovery Cases
@@ -2072,15 +2121,17 @@ app.get('/api/razorpay/sync', async (req, res) => {
       });
     });
 
-    // Update in-memory & persistent stores with strictly the active account's data
-    liveCasesStore = finalCleanCases;
-    livePaymentsStore = mappedPayments;
-    liveActivitiesStore = generatedActivities;
+    // Update in-memory stores only for guest or active user
+    if (!userId) {
+      liveCasesStore = finalCleanCases;
+      livePaymentsStore = mappedPayments;
+      liveActivitiesStore = generatedActivities;
+    }
 
     await Promise.all([
-      db.saveCases(finalCleanCases),
-      db.savePayments(mappedPayments),
-      db.saveActivities(generatedActivities)
+      db.saveCases(finalCleanCases, true, userId),
+      db.savePayments(mappedPayments, userId),
+      db.saveActivities(generatedActivities, userId)
     ]);
 
     // Automatically enqueue any synced recovery cases lacking AI diagnosis

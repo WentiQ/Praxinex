@@ -28,10 +28,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   user,
   onOpenAuth
 }) => {
-  const [name, setName] = useState(merchant.name);
-  const [email, setEmail] = useState(merchant.email);
-  const [businessType, setBusinessType] = useState(merchant.businessType);
+  const [name, setName] = useState(merchant.name || '');
+  const [email, setEmail] = useState(merchant.email || '');
+  const [businessType, setBusinessType] = useState(merchant.businessType || '');
   const [saved, setSaved] = useState(false);
+
+  // Sync inputs dynamically whenever merchant prop resets or updates
+  React.useEffect(() => {
+    setName(merchant.name || '');
+    setEmail(merchant.email || '');
+    setBusinessType(merchant.businessType || '');
+  }, [merchant.name, merchant.email, merchant.businessType]);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();

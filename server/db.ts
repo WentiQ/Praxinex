@@ -1,6 +1,4 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import fs from 'fs';
-import path from 'path';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -16,18 +14,10 @@ export interface DBStore {
   payments: any[];
 }
 
-const LOCAL_STORE_PATH = path.resolve(process.cwd(), 'data', 'platform_store.json');
-
-// Ensure data directory exists
-const dataDir = path.dirname(LOCAL_STORE_PATH);
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
-
 class DatabaseManager {
   private supabase: SupabaseClient | null = null;
   private isSupabaseActive: boolean = false;
-  private localCache: DBStore = {
+  private guestMemoryCache: DBStore = {
     merchant: null,
     policies: null,
     autoTrafficState: null,
@@ -63,65 +53,65 @@ class DatabaseManager {
       try {
         this.supabase = createClient(supabaseUrl, supabaseKey);
         this.isSupabaseActive = true;
-        console.log(`⚡ Connected to Supabase PostgreSQL database (${supabaseUrl})`);
+        console.log(`⚡ Connected directly to Supabase PostgreSQL cloud database (${supabaseUrl})`);
       } catch (err: any) {
-        console.warn('⚠️ Supabase connection failed, falling back to local persistent store:', err.message);
-        this.initLocalStore();
+        console.error('⚠️ Supabase connection error:', err.message);
       }
     } else {
-      console.log('📦 Supabase credentials not found; utilizing local disk persistence (data/platform_store.json)');
-      this.initLocalStore();
-    }
-  }
-
-  private initLocalStore() {
-    try {
-      if (fs.existsSync(LOCAL_STORE_PATH)) {
-        const raw = fs.readFileSync(LOCAL_STORE_PATH, 'utf-8');
-        const parsed = JSON.parse(raw);
-        this.localCache = {
-          merchant: parsed.merchant || null,
-          policies: parsed.policies || null,
-          autoTrafficState: parsed.autoTrafficState || null,
-          mostRecentCaseId: parsed.mostRecentCaseId || null,
-          cases: Array.isArray(parsed.cases) ? parsed.cases : [],
-          customers: Array.isArray(parsed.customers) ? parsed.customers : [],
-          activities: Array.isArray(parsed.activities) ? parsed.activities : [],
-          payments: Array.isArray(parsed.payments) ? parsed.payments : []
-        };
-      } else {
-        this.persistLocalStore();
-      }
-    } catch (err: any) {
-      console.warn('Could not read local store, starting fresh:', err.message);
-      this.persistLocalStore();
-    }
-  }
-
-  private persistLocalStore() {
-    try {
-      fs.writeFileSync(LOCAL_STORE_PATH, JSON.stringify(this.localCache, null, 2), 'utf-8');
-    } catch (err: any) {
-      console.error('Error persisting to local store:', err.message);
+      console.warn('⚠️ Supabase credentials missing. Please set SUPABASE_URL and SUPABASE_KEY.');
     }
   }
 
   // --- Merchant Settings ---
-  async getMerchant(): Promise<any | null> {
+  async getMerchant(userId?: string): Promise<any | null> {
     if (this.isSupabaseActive && this.supabase) {
       try {
-        const { data, error } = await this.supabase
-          .from('merchant_settings')
-          .select('*')
-          .not('id', 'in', '("recovery_policies","auto_traffic_state")')
-          .order('updated_at', { ascending: false });
-        if (data && !error && data.length > 0) {
-          // Always return the most recently saved/edited merchant profile
-          return data[0].profile;
+        if (userId) {
+          // 1. Direct ID match
+          const { data: directData, error: directError } = await this.supabase
+            .from('merchant_settings')
+            .select('*')
+            .eq('id', userId)
+            .single();
+          if (directData && !directError && directData.profile) {
+            return directData.profile;
+          }
+
+          // 2. Lookup by email / user link in profile
+          const { data: allMerchants } = await this.supabase
+            .from('merchant_settings')
+            .select('*')
+            .not('id', 'in', '("recovery_policies","auto_traffic_state","most_recent_case_id","default_merchant")')
+            .order('updated_at', { ascending: false });
+          
+          if (allMerchants && allMerchants.length > 0) {
+            const cleanUser = userId.toLowerCase().trim();
+            const matched = allMerchants.find(m => 
+              m.id.toLowerCase() === cleanUser || 
+              (m.profile && (
+                m.profile.id?.toLowerCase() === cleanUser || 
+                m.profile.email?.toLowerCase() === cleanUser ||
+                m.profile.userId?.toLowerCase() === cleanUser
+              ))
+            );
+            if (matched && matched.profile) {
+              return matched.profile;
+            }
+            // If user is authenticated and there is a saved merchant profile, fallback to it
+            if (allMerchants.length === 1 && allMerchants[0].profile) {
+              return allMerchants[0].profile;
+            }
+          }
+          return null;
+        } else {
+          // Guest / Unauthenticated: strictly null
+          return null;
         }
-      } catch {}
+      } catch (err: any) {
+        console.error('Supabase getMerchant error:', err.message);
+      }
     }
-    return this.localCache.merchant;
+    return userId ? null : this.guestMemoryCache.merchant;
   }
 
   async getAllMerchants(): Promise<any[]> {
@@ -130,88 +120,116 @@ class DatabaseManager {
         const { data, error } = await this.supabase
           .from('merchant_settings')
           .select('*')
-          .not('id', 'in', '("recovery_policies","auto_traffic_state")')
+          .not('id', 'in', '("recovery_policies","auto_traffic_state","most_recent_case_id")')
           .order('updated_at', { ascending: false });
         if (data && !error && data.length > 0) {
           return data.map(d => d.profile).filter(p => p && (p.razorpayKeyId || p.businessName));
         }
-      } catch {}
+      } catch (err: any) {
+        console.error('Supabase getAllMerchants error:', err.message);
+      }
     }
-    return this.localCache.merchant ? [this.localCache.merchant] : [];
+    return this.guestMemoryCache.merchant ? [this.guestMemoryCache.merchant] : [];
   }
 
-  async saveMerchant(profile: any): Promise<void> {
-    this.localCache.merchant = profile;
-    this.persistLocalStore();
+  async saveMerchant(profile: any, userId?: string): Promise<void> {
+    const merchantId = userId || 'default_merchant';
+    if (!userId) {
+      this.guestMemoryCache.merchant = profile;
+    }
 
     if (this.isSupabaseActive && this.supabase) {
       try {
-        await this.supabase.from('merchant_settings').upsert({
-          id: profile.id || 'default_merchant',
+        const { error } = await this.supabase.from('merchant_settings').upsert({
+          id: merchantId,
           profile,
           updated_at: new Date().toISOString()
         });
+        if (error) {
+          console.error('Supabase merchant upsert error:', error.message);
+        }
       } catch (err: any) {
-        console.warn('Supabase merchant upsert error:', err.message);
+        console.error('Supabase merchant upsert exception:', err.message);
       }
     }
   }
 
   // --- Recovery Policies ---
-  async getPolicies(): Promise<any | null> {
+  async getPolicies(userId?: string): Promise<any | null> {
+    const policyId = userId ? `recovery_policies_${userId}` : 'recovery_policies';
     if (this.isSupabaseActive && this.supabase) {
       try {
         const { data, error } = await this.supabase
           .from('merchant_settings')
           .select('*')
-          .eq('id', 'recovery_policies')
+          .eq('id', policyId)
           .single();
         if (data && !error && data.profile) return data.profile;
+
+        // Fallback to default template if user-specific policy does not exist yet
+        if (userId) {
+          const defaultRes = await this.supabase
+            .from('merchant_settings')
+            .select('*')
+            .eq('id', 'recovery_policies')
+            .single();
+          if (defaultRes.data && !defaultRes.error && defaultRes.data.profile) {
+            return defaultRes.data.profile;
+          }
+        }
       } catch {}
     }
-    return this.localCache.policies;
+    return this.guestMemoryCache.policies;
   }
 
-  async savePolicies(policy: any): Promise<void> {
-    this.localCache.policies = policy;
-    this.persistLocalStore();
+  async savePolicies(policy: any, userId?: string): Promise<void> {
+    const policyId = userId ? `recovery_policies_${userId}` : 'recovery_policies';
+    if (!userId) {
+      this.guestMemoryCache.policies = policy;
+    }
 
     if (this.isSupabaseActive && this.supabase) {
       try {
-        await this.supabase.from('merchant_settings').upsert({
-          id: 'recovery_policies',
+        const { error } = await this.supabase.from('merchant_settings').upsert({
+          id: policyId,
           profile: policy,
           updated_at: new Date().toISOString()
         });
+        if (error) {
+          console.error('Supabase policies upsert error:', error.message);
+        }
       } catch (err: any) {
-        console.warn('Supabase policies upsert error:', err.message);
+        console.error('Supabase policies upsert exception:', err.message);
       }
     }
   }
 
   // --- Auto Traffic Engine State Persistence ---
-  async getAutoTrafficState(): Promise<any | null> {
+  async getAutoTrafficState(userId?: string): Promise<any | null> {
+    const stateId = userId ? `auto_traffic_state_${userId}` : 'auto_traffic_state';
     if (this.isSupabaseActive && this.supabase) {
       try {
         const { data, error } = await this.supabase
           .from('merchant_settings')
           .select('*')
-          .eq('id', 'auto_traffic_state')
+          .eq('id', stateId)
           .single();
         if (data && !error && data.profile) return data.profile;
       } catch {}
     }
-    return this.localCache.autoTrafficState;
+    return this.guestMemoryCache.autoTrafficState;
   }
 
-  async saveAutoTrafficState(state: any): Promise<void> {
-    this.localCache.autoTrafficState = state;
-    this.persistLocalStore();
+  async saveAutoTrafficState(state: any, userId?: string): Promise<void> {
+    const stateId = userId ? `auto_traffic_state_${userId}` : 'auto_traffic_state';
+    if (!userId) {
+      this.guestMemoryCache.autoTrafficState = state;
+    }
 
     if (this.isSupabaseActive && this.supabase) {
       try {
         await this.supabase.from('merchant_settings').upsert({
-          id: 'auto_traffic_state',
+          id: stateId,
           profile: state,
           updated_at: new Date().toISOString()
         });
@@ -222,28 +240,31 @@ class DatabaseManager {
   }
 
   // --- Recency Sentinel Persistence ---
-  async getMostRecentCaseId(): Promise<string | null> {
+  async getMostRecentCaseId(userId?: string): Promise<string | null> {
+    const id = userId ? `most_recent_case_id_${userId}` : 'most_recent_case_id';
     if (this.isSupabaseActive && this.supabase) {
       try {
         const { data, error } = await this.supabase
           .from('merchant_settings')
           .select('*')
-          .eq('id', 'most_recent_case_id')
+          .eq('id', id)
           .single();
         if (data && !error && data.profile?.caseId) return data.profile.caseId;
       } catch {}
     }
-    return this.localCache.mostRecentCaseId || null;
+    return this.guestMemoryCache.mostRecentCaseId || null;
   }
 
-  async saveMostRecentCaseId(caseId: string): Promise<void> {
-    this.localCache.mostRecentCaseId = caseId;
-    this.persistLocalStore();
+  async saveMostRecentCaseId(caseId: string, userId?: string): Promise<void> {
+    const id = userId ? `most_recent_case_id_${userId}` : 'most_recent_case_id';
+    if (!userId) {
+      this.guestMemoryCache.mostRecentCaseId = caseId;
+    }
 
     if (this.isSupabaseActive && this.supabase) {
       try {
         await this.supabase.from('merchant_settings').upsert({
-          id: 'most_recent_case_id',
+          id,
           profile: { caseId, updatedAt: new Date().toISOString() },
           updated_at: new Date().toISOString()
         });
@@ -254,29 +275,42 @@ class DatabaseManager {
   }
 
   // --- Recovery Cases ---
-  async getCases(): Promise<any[]> {
+  async getCases(userId?: string): Promise<any[]> {
+    if (!userId) {
+      // Unauthenticated / Signed-out state: strictly return empty array
+      return [];
+    }
+
     if (this.isSupabaseActive && this.supabase) {
       try {
-        const { data, error } = await this.supabase
+        const query = this.supabase
           .from('recovery_cases')
           .select('*')
           .order('updated_at', { ascending: false });
+
+        const { data, error } = await query;
         if (data && !error && data.length > 0) {
-          return data.map(d => d.case_data);
+          const cases = data.map(d => d.case_data);
+          // Strictly return ONLY this authenticated user's cases
+          return cases.filter((c: any) => c && c.userId === userId);
         }
-      } catch {}
+      } catch (err: any) {
+        console.error('Supabase getCases error:', err.message);
+      }
     }
-    return this.localCache.cases;
+    return [];
   }
 
-  async upsertCase(caseItem: any): Promise<void> {
-    const idx = this.localCache.cases.findIndex(c => c.id === caseItem.id);
-    if (idx >= 0) {
-      this.localCache.cases[idx] = caseItem;
-    } else {
-      this.localCache.cases.unshift(caseItem);
+  async upsertCase(caseItem: any, userId?: string): Promise<void> {
+    caseItem.userId = userId || caseItem.userId || 'guest';
+    if (!userId) {
+      const idx = this.guestMemoryCache.cases.findIndex(c => c.id === caseItem.id);
+      if (idx >= 0) {
+        this.guestMemoryCache.cases[idx] = caseItem;
+      } else {
+        this.guestMemoryCache.cases.unshift(caseItem);
+      }
     }
-    this.persistLocalStore();
 
     if (this.isSupabaseActive && this.supabase) {
       try {
@@ -289,35 +323,35 @@ class DatabaseManager {
           updated_at: new Date().toISOString()
         });
       } catch (err: any) {
-        console.warn('Supabase case upsert error:', err.message);
+        console.error('Supabase case upsert error:', err.message);
       }
     }
   }
 
-  async saveCases(cases: any[], replaceAll: boolean = true): Promise<void> {
-    if (replaceAll) {
-      this.localCache.cases = cases;
-    } else {
-      const existingMap = new Map<string, any>();
-      for (const c of this.localCache.cases) {
-        if (c && c.id) existingMap.set(c.id, c);
-      }
-      for (const c of cases) {
-        if (c && c.id) {
-          const existing = existingMap.get(c.id);
-          existingMap.set(c.id, { ...existing, ...c });
+  async saveCases(cases: any[], replaceAll: boolean = true, userId?: string): Promise<void> {
+    const effectiveUserId = userId || 'guest';
+    cases.forEach(c => { if (c) c.userId = effectiveUserId; });
+
+    if (!userId) {
+      if (replaceAll) {
+        this.guestMemoryCache.cases = cases;
+      } else {
+        const existingMap = new Map<string, any>();
+        for (const c of this.guestMemoryCache.cases) {
+          if (c && c.id) existingMap.set(c.id, c);
         }
+        for (const c of cases) {
+          if (c && c.id) {
+            const existing = existingMap.get(c.id);
+            existingMap.set(c.id, { ...existing, ...c });
+          }
+        }
+        this.guestMemoryCache.cases = Array.from(existingMap.values());
       }
-      this.localCache.cases = Array.from(existingMap.values());
     }
-    this.persistLocalStore();
 
     if (this.isSupabaseActive && this.supabase) {
       try {
-        if (replaceAll) {
-          // Delete stale/old rows from previous keys so only active key cases remain
-          await this.supabase.from('recovery_cases').delete().neq('id', '___PLACEHOLDER___');
-        }
         if (cases.length > 0) {
           const rows = cases.map(c => ({
             id: c.id,
@@ -330,33 +364,26 @@ class DatabaseManager {
           await this.supabase.from('recovery_cases').upsert(rows);
         }
       } catch (err: any) {
-        console.warn('Supabase bulk cases sync error:', err.message);
+        console.error('Supabase bulk cases sync error:', err.message);
       }
     }
   }
 
-  async clearAllData(): Promise<void> {
-    this.localCache.cases = [];
-    this.localCache.payments = [];
-    this.localCache.activities = [];
-    this.persistLocalStore();
-
-    if (this.isSupabaseActive && this.supabase) {
-      try {
-        await Promise.all([
-          this.supabase.from('recovery_cases').delete().neq('id', '___PLACEHOLDER___'),
-          this.supabase.from('payments_ledger').delete().neq('id', '___PLACEHOLDER___'),
-          this.supabase.from('activity_logs').delete().neq('id', '___PLACEHOLDER___')
-        ]);
-        console.log('🧹 Purged all previous account data from Supabase tables');
-      } catch (err: any) {
-        console.warn('Supabase purge error:', err.message);
-      }
+  async clearAllData(userId?: string): Promise<void> {
+    if (!userId) {
+      this.guestMemoryCache.cases = [];
+      this.guestMemoryCache.payments = [];
+      this.guestMemoryCache.activities = [];
     }
   }
 
   // --- Activities Audit Trail ---
-  async getActivities(): Promise<any[]> {
+  async getActivities(userId?: string): Promise<any[]> {
+    if (!userId) {
+      // Unauthenticated / Signed-out state: strictly return empty array
+      return [];
+    }
+
     let list: any[] = [];
     if (this.isSupabaseActive && this.supabase) {
       try {
@@ -367,10 +394,14 @@ class DatabaseManager {
           .limit(200);
         if (data && !error && data.length > 0) {
           list = data.map(d => d.activity_data);
+          // Strictly return ONLY this user's activities
+          list = list.filter((act: any) => act && act.userId === userId);
         }
-      } catch {}
+      } catch (err: any) {
+        console.error('Supabase getActivities error:', err.message);
+      }
     } else {
-      list = this.localCache.activities;
+      list = [];
     }
 
     // Strictly filter out simulation intake placeholders — show only actions taken after creation
@@ -382,15 +413,15 @@ class DatabaseManager {
     );
   }
 
-  async addActivity(activity: any): Promise<void> {
-    // Avoid duplicate activities by ID
-    if (!this.localCache.activities.some(a => a.id === activity.id)) {
-      this.localCache.activities.unshift(activity);
-      // Keep recent 300 activities
-      if (this.localCache.activities.length > 300) {
-        this.localCache.activities = this.localCache.activities.slice(0, 300);
+  async addActivity(activity: any, userId?: string): Promise<void> {
+    activity.userId = userId || activity.userId || 'guest';
+    if (!userId) {
+      if (!this.guestMemoryCache.activities.some(a => a.id === activity.id)) {
+        this.guestMemoryCache.activities.unshift(activity);
+        if (this.guestMemoryCache.activities.length > 300) {
+          this.guestMemoryCache.activities = this.guestMemoryCache.activities.slice(0, 300);
+        }
       }
-      this.persistLocalStore();
     }
 
     if (this.isSupabaseActive && this.supabase) {
@@ -405,79 +436,17 @@ class DatabaseManager {
           activity_data: activity
         });
       } catch (err: any) {
-        console.warn('Supabase activity insert error:', err.message);
+        console.error('Supabase activity insert error:', err.message);
       }
     }
   }
 
-  // --- Payments Ledger ---
-  async getPayments(): Promise<any[]> {
-    if (this.isSupabaseActive && this.supabase) {
-      try {
-        const { data, error } = await this.supabase
-          .from('payments_ledger')
-          .select('*')
-          .order('timestamp', { ascending: false })
-          .limit(200);
-        if (data && !error && data.length > 0) {
-          return data.map(d => d.payment_data);
-        }
-      } catch {}
+  async saveActivities(activities: any[], userId?: string): Promise<void> {
+    const effectiveUserId = userId || 'guest';
+    activities.forEach(a => { if (a) a.userId = effectiveUserId; });
+    if (!userId) {
+      this.guestMemoryCache.activities = activities || [];
     }
-    return this.localCache.payments;
-  }
-
-  async addPayment(payment: any): Promise<void> {
-    if (!this.localCache.payments.some(p => p.id === payment.id || (p.razorpayPaymentId && p.razorpayPaymentId === payment.razorpayPaymentId))) {
-      this.localCache.payments.unshift(payment);
-      if (this.localCache.payments.length > 300) {
-        this.localCache.payments = this.localCache.payments.slice(0, 300);
-      }
-      this.persistLocalStore();
-    }
-
-    if (this.isSupabaseActive && this.supabase) {
-      try {
-        await this.supabase.from('payments_ledger').upsert({
-          id: payment.id,
-          razorpay_payment_id: payment.razorpayPaymentId,
-          customer_name: payment.customerName,
-          amount: payment.amount,
-          status: payment.status,
-          timestamp: payment.isoTimestamp || new Date().toISOString(),
-          payment_data: payment
-        });
-      } catch (err: any) {
-        console.warn('Supabase payment insert error:', err.message);
-      }
-    }
-  }
-
-  async savePayments(payments: any[]): Promise<void> {
-    this.localCache.payments = payments || [];
-    this.persistLocalStore();
-
-    if (this.isSupabaseActive && this.supabase && payments.length > 0) {
-      try {
-        const rows = payments.map(p => ({
-          id: p.id,
-          razorpay_payment_id: p.razorpayPaymentId || p.id,
-          customer_name: p.customerName || 'Customer',
-          amount: p.amount || 0,
-          status: p.status || 'succeeded',
-          timestamp: p.isoTimestamp || new Date().toISOString(),
-          payment_data: p
-        }));
-        await this.supabase.from('payments_ledger').upsert(rows);
-      } catch (err: any) {
-        console.warn('Supabase bulk payments upsert error:', err.message);
-      }
-    }
-  }
-
-  async saveActivities(activities: any[]): Promise<void> {
-    this.localCache.activities = activities || [];
-    this.persistLocalStore();
 
     if (this.isSupabaseActive && this.supabase && activities.length > 0) {
       try {
@@ -492,7 +461,86 @@ class DatabaseManager {
         }));
         await this.supabase.from('activity_logs').upsert(rows);
       } catch (err: any) {
-        console.warn('Supabase bulk activities upsert error:', err.message);
+        console.error('Supabase bulk activities upsert error:', err.message);
+      }
+    }
+  }
+
+  // --- Payments Ledger ---
+  async getPayments(userId?: string): Promise<any[]> {
+    if (!userId) {
+      // Unauthenticated / Signed-out state: strictly return empty array
+      return [];
+    }
+
+    if (this.isSupabaseActive && this.supabase) {
+      try {
+        const { data, error } = await this.supabase
+          .from('payments_ledger')
+          .select('*')
+          .order('timestamp', { ascending: false })
+          .limit(200);
+        if (data && !error && data.length > 0) {
+          const payments = data.map(d => d.payment_data);
+          // Strictly return ONLY this user's payments
+          return payments.filter((p: any) => p && p.userId === userId);
+        }
+      } catch (err: any) {
+        console.error('Supabase getPayments error:', err.message);
+      }
+    }
+    return [];
+  }
+
+  async addPayment(payment: any, userId?: string): Promise<void> {
+    payment.userId = userId || payment.userId || 'guest';
+    if (!userId) {
+      if (!this.guestMemoryCache.payments.some(p => p.id === payment.id || (p.razorpayPaymentId && p.razorpayPaymentId === payment.razorpayPaymentId))) {
+        this.guestMemoryCache.payments.unshift(payment);
+        if (this.guestMemoryCache.payments.length > 300) {
+          this.guestMemoryCache.payments = this.guestMemoryCache.payments.slice(0, 300);
+        }
+      }
+    }
+
+    if (this.isSupabaseActive && this.supabase) {
+      try {
+        await this.supabase.from('payments_ledger').upsert({
+          id: payment.id,
+          razorpay_payment_id: payment.razorpayPaymentId,
+          customer_name: payment.customerName,
+          amount: payment.amount,
+          status: payment.status,
+          timestamp: payment.isoTimestamp || new Date().toISOString(),
+          payment_data: payment
+        });
+      } catch (err: any) {
+        console.error('Supabase payment insert error:', err.message);
+      }
+    }
+  }
+
+  async savePayments(payments: any[], userId?: string): Promise<void> {
+    const effectiveUserId = userId || 'guest';
+    payments.forEach(p => { if (p) p.userId = effectiveUserId; });
+    if (!userId) {
+      this.guestMemoryCache.payments = payments || [];
+    }
+
+    if (this.isSupabaseActive && this.supabase && payments.length > 0) {
+      try {
+        const rows = payments.map(p => ({
+          id: p.id,
+          razorpay_payment_id: p.razorpayPaymentId || p.id,
+          customer_name: p.customerName || 'Customer',
+          amount: p.amount || 0,
+          status: p.status || 'succeeded',
+          timestamp: p.isoTimestamp || new Date().toISOString(),
+          payment_data: p
+        }));
+        await this.supabase.from('payments_ledger').upsert(rows);
+      } catch (err: any) {
+        console.error('Supabase bulk payments upsert error:', err.message);
       }
     }
   }
@@ -500,7 +548,7 @@ class DatabaseManager {
   getStatus(): { isSupabase: boolean; storagePath: string } {
     return {
       isSupabase: this.isSupabaseActive,
-      storagePath: this.isSupabaseActive ? 'Supabase PostgreSQL Cloud' : LOCAL_STORE_PATH
+      storagePath: 'Supabase PostgreSQL Cloud (Direct Database Persistence)'
     };
   }
 }

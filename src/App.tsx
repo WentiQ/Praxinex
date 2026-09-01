@@ -46,97 +46,57 @@ export default function App() {
       setUser(session?.user || null);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const nextUser = session?.user || null;
+      setUser(nextUser);
+      if (event === 'SIGNED_OUT' || !nextUser) {
+        // Strictly reset all client states immediately to clean defaults upon sign out
+        setMerchant(INITIAL_MERCHANT);
+        setPolicies(INITIAL_POLICIES);
+        setCases(INITIAL_CASES);
+        setActivities(INITIAL_ACTIVITIES);
+        setPayments(PAYMENT_LEDGER);
+        setSyncedCustomers(CUSTOMER_DIRECTORY);
+        merchantRef.current = INITIAL_MERCHANT;
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // Core Data - initialized from deterministic cache to prevent layout shift or flashing on refresh
-  const [cases, setCases] = useState<RecoveryCase[]>(() => {
-    try {
-      const saved = localStorage.getItem('recovery_cases_cache');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return INITIAL_CASES;
-  });
-
-  const [activities, setActivities] = useState<ActivityEvent[]>(() => {
-    try {
-      const saved = localStorage.getItem('recovery_activities_cache');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return INITIAL_ACTIVITIES;
-  });
-
-  const [merchant, setMerchant] = useState<MerchantProfile>(() => {
-    try {
-      const saved = localStorage.getItem('recovery_merchant_profile');
-      if (saved) return { ...INITIAL_MERCHANT, ...JSON.parse(saved) };
-    } catch {}
-    return INITIAL_MERCHANT;
-  });
+  // Core Data - initialized with base defaults, strictly persisted to & hydrated from Supabase PostgreSQL Cloud
+  const [cases, setCases] = useState<RecoveryCase[]>(INITIAL_CASES);
+  const [activities, setActivities] = useState<ActivityEvent[]>(INITIAL_ACTIVITIES);
+  const [merchant, setMerchant] = useState<MerchantProfile>(INITIAL_MERCHANT);
 
   const handleUpdateMerchant = (updated: MerchantProfile) => {
     setMerchant(updated);
-    try {
-      localStorage.setItem('recovery_merchant_profile', JSON.stringify(updated));
-      fetch('/api/merchant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated)
-      }).catch(() => {});
-    } catch {}
+    fetch('/api/merchant', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        ...(user?.id ? { 'x-user-id': user.id } : {})
+      },
+      body: JSON.stringify(updated)
+    }).catch(err => console.error('Failed to save merchant to database:', err));
   };
 
-  const [policies, setPolicies] = useState<RecoveryPolicy>(() => {
-    try {
-      const saved = localStorage.getItem('recovery_policies_data');
-      if (saved) return { ...INITIAL_POLICIES, ...JSON.parse(saved) };
-    } catch {}
-    return INITIAL_POLICIES;
-  });
+  const [policies, setPolicies] = useState<RecoveryPolicy>(INITIAL_POLICIES);
 
   const handleUpdatePolicies = (updated: RecoveryPolicy) => {
     setPolicies(updated);
-    try {
-      localStorage.setItem('recovery_policies_data', JSON.stringify(updated));
-      fetch('/api/policies', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated)
-      }).catch(() => {});
-    } catch {}
+    fetch('/api/policies', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        ...(user?.id ? { 'x-user-id': user.id } : {})
+      },
+      body: JSON.stringify(updated)
+    }).catch(err => console.error('Failed to save policies to database:', err));
   };
 
-  const [payments, setPayments] = useState<PaymentRecord[]>(() => {
-    try {
-      const saved = localStorage.getItem('recovery_payments_cache');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return PAYMENT_LEDGER;
-  });
-
-  const [syncedCustomers, setSyncedCustomers] = useState<CustomerRecord[]>(() => {
-    try {
-      const saved = localStorage.getItem('recovery_customers_cache');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return CUSTOMER_DIRECTORY;
-  });
+  const [payments, setPayments] = useState<PaymentRecord[]>(PAYMENT_LEDGER);
+  const [syncedCustomers, setSyncedCustomers] = useState<CustomerRecord[]>(CUSTOMER_DIRECTORY);
 
   // Dynamically calculate and update Customers in real-time from all cases and payments
   const customers: CustomerRecord[] = useMemo(() => {
@@ -451,7 +411,13 @@ export default function App() {
       return;
     }
     try {
-      const res = await fetch(`/api/razorpay/sync?keyId=${encodeURIComponent(kId)}&keySecret=${encodeURIComponent(kSec)}${isReset ? '&reset=true' : ''}`);
+      const authHeaders: Record<string, string> = user?.id ? { 
+        'x-user-id': user.id,
+        'x-user-email': user.email || ''
+      } : {};
+      const res = await fetch(`/api/razorpay/sync?keyId=${encodeURIComponent(kId)}&keySecret=${encodeURIComponent(kSec)}${isReset ? '&reset=true' : ''}`, {
+        headers: authHeaders
+      });
       const data = await res.json();
 
       if (data.success && data.transformed) {
@@ -549,21 +515,12 @@ export default function App() {
             }
           });
 
-          try {
-            localStorage.setItem('recovery_cases_cache', JSON.stringify(merged));
-          } catch {}
           return merged;
         });
 
         setSyncedCustomers(newCustomers);
         setPayments(newPayments);
         setActivities(newActivities);
-
-        try {
-          localStorage.setItem('recovery_customers_cache', JSON.stringify(newCustomers));
-          localStorage.setItem('recovery_payments_cache', JSON.stringify(newPayments));
-          localStorage.setItem('recovery_activities_cache', JSON.stringify(newActivities));
-        } catch {}
 
         setMerchant(prev => {
           const updated = {
@@ -573,9 +530,6 @@ export default function App() {
             lastSyncedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             razorpayConnected: true
           };
-          try {
-            localStorage.setItem('recovery_merchant_profile', JSON.stringify(updated));
-          } catch {}
           return updated;
         });
       }
@@ -584,40 +538,88 @@ export default function App() {
     } finally {
       setIsSyncing(false);
     }
-  }, []);
+  }, [user?.id]);
 
-  // Initial Sync & Periodic Polling (Runs once on mount + 30s heartbeat)
+  // Initial Sync & Periodic Polling (Runs on mount & auth change + 30s heartbeat)
   useEffect(() => {
     let isMounted = true;
+    const authHeaders: Record<string, string> = user?.id ? { 
+      'x-user-id': user.id,
+      'x-user-email': user.email || ''
+    } : {};
 
     async function init() {
       const startTime = Date.now();
       try {
-        const resMerchant = await fetch('/api/merchant');
+        const resMerchant = await fetch('/api/merchant', { headers: authHeaders });
         const dataMerchant = await resMerchant.json();
-        if (isMounted && dataMerchant?.success && dataMerchant.profile) {
-          const profile = dataMerchant.profile;
-          setMerchant(prev => {
-            const merged = { ...prev, ...profile };
-            try {
-              localStorage.setItem('recovery_merchant_profile', JSON.stringify(merged));
-            } catch {}
-            return merged;
-          });
-          merchantRef.current = profile;
-          await syncLiveRazorpayData(false, profile.razorpayKeyId, profile.razorpayKeySecret);
-        } else {
-          await syncLiveRazorpayData(false);
+        if (isMounted) {
+          if (dataMerchant?.success && dataMerchant.profile) {
+            const profile = dataMerchant.profile;
+            setMerchant(prev => ({ ...prev, ...profile }));
+            merchantRef.current = profile;
+            await syncLiveRazorpayData(false, profile.razorpayKeyId, profile.razorpayKeySecret);
+          } else {
+            setMerchant(INITIAL_MERCHANT);
+            merchantRef.current = INITIAL_MERCHANT;
+            await syncLiveRazorpayData(false);
+          }
         }
       } catch {
-        await syncLiveRazorpayData(false);
+        if (isMounted) await syncLiveRazorpayData(false);
       }
 
       try {
-        const resPolicies = await fetch('/api/policies');
+        const resPolicies = await fetch('/api/policies', { headers: authHeaders });
         const dataPolicies = await resPolicies.json();
-        if (isMounted && dataPolicies?.success && dataPolicies.policies) {
-          setPolicies(prev => ({ ...prev, ...dataPolicies.policies }));
+        if (isMounted) {
+          if (dataPolicies?.success && dataPolicies.policies) {
+            setPolicies(prev => ({ ...prev, ...dataPolicies.policies }));
+          } else {
+            setPolicies(INITIAL_POLICIES);
+          }
+        }
+      } catch {}
+
+      try {
+        const resCases = await fetch('/api/cases', { headers: authHeaders });
+        const dataCases = await resCases.json();
+        if (isMounted) {
+          if (dataCases?.success && Array.isArray(dataCases.cases) && dataCases.cases.length > 0) {
+            setCases(dataCases.cases);
+          } else if (!user?.id) {
+            setCases(INITIAL_CASES);
+          } else {
+            setCases([]);
+          }
+        }
+      } catch {}
+
+      try {
+        const resActivities = await fetch('/api/activities', { headers: authHeaders });
+        const dataActivities = await resActivities.json();
+        if (isMounted) {
+          if (dataActivities?.success && Array.isArray(dataActivities.activities) && dataActivities.activities.length > 0) {
+            setActivities(dataActivities.activities);
+          } else if (!user?.id) {
+            setActivities(INITIAL_ACTIVITIES);
+          } else {
+            setActivities([]);
+          }
+        }
+      } catch {}
+
+      try {
+        const resPayments = await fetch('/api/payments', { headers: authHeaders });
+        const dataPayments = await resPayments.json();
+        if (isMounted) {
+          if (dataPayments?.success && Array.isArray(dataPayments.payments) && dataPayments.payments.length > 0) {
+            setPayments(dataPayments.payments);
+          } else if (!user?.id) {
+            setPayments(PAYMENT_LEDGER);
+          } else {
+            setPayments([]);
+          }
         }
       } catch {}
 
@@ -638,10 +640,10 @@ export default function App() {
       syncLiveRazorpayData(false);
     }, 30000);
 
-    // Fast background sync for live diagnosed cases from backend SQLite database
+    // Fast background sync for live diagnosed cases from backend database
     const casesPollInterval = setInterval(async () => {
       try {
-        const res = await fetch('/api/cases');
+        const res = await fetch('/api/cases', { headers: authHeaders });
         if (res.ok) {
           const data = await res.json();
           if (isMounted && data?.cases && Array.isArray(data.cases)) {
@@ -700,7 +702,7 @@ export default function App() {
       clearInterval(interval);
       clearInterval(casesPollInterval);
     };
-  }, [syncLiveRazorpayData]);
+  }, [user?.id, syncLiveRazorpayData]);
 
   // Computed Financial Metrics
   const totalAtRisk = cases.reduce((sum, c) => sum + (c.status !== 'Recovered' ? c.amount : 0), 0);
@@ -1093,21 +1095,16 @@ export default function App() {
         onClose={() => setSelectedCase(null)}
         onExecuteAction={handleStartExecuteAction}
         onCaseUpdated={(updated) => {
-          setCases(prev => {
-            const nextCases = prev.map(c => c.id === updated.id ? { ...c, ...updated } : c);
-            try {
-              localStorage.setItem('recovery_cases_cache', JSON.stringify(nextCases));
-            } catch {}
-            return nextCases;
-          });
+          setCases(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
           setSelectedCase(prev => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
-          try {
-            fetch('/api/cases', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(updated)
-            }).catch(() => {});
-          } catch {}
+          fetch('/api/cases', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              ...(user?.id ? { 'x-user-id': user.id } : {})
+            },
+            body: JSON.stringify(updated)
+          }).catch(err => console.error('Failed to update case in database:', err));
         }}
       />
 
