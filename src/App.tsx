@@ -164,9 +164,7 @@ export default function App() {
     return Array.from(map.values());
   }, [cases, payments, syncedCustomers]);
 
-  // Dynamic Real-Time Trend Data calculated strictly from database cases & payments
-  // Past days are strictly immutable historical closes and NEVER change when today updates.
-  // Today's point updates dynamically in real time as cases are recovered or simulated.
+  // Dynamic Real-Time Trend Data calculated strictly and 100% purely from database cases & payments
   const trendData = useMemo(() => {
     const parseToDate = (input: any): Date | null => {
       if (!input) return null;
@@ -179,42 +177,10 @@ export default function App() {
       if (!str) return null;
       const lower = str.toLowerCase();
       if (lower === 'just now' || lower === 'payment settled') return new Date();
-      if (lower.startsWith('today')) {
-        const d = new Date();
-        const timeMatch = str.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?/i);
-        if (timeMatch) {
-          let hours = parseInt(timeMatch[1], 10);
-          const mins = parseInt(timeMatch[2], 10);
-          const ampm = timeMatch[4]?.toLowerCase();
-          if (ampm === 'pm' && hours < 12) hours += 12;
-          if (ampm === 'am' && hours === 12) hours = 0;
-          d.setHours(hours, mins, 0, 0);
-        }
-        return d;
-      }
+      if (lower.startsWith('today')) return new Date();
       if (lower.startsWith('yesterday')) {
         const d = new Date();
         d.setDate(d.getDate() - 1);
-        const timeMatch = str.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?/i);
-        if (timeMatch) {
-          let hours = parseInt(timeMatch[1], 10);
-          const mins = parseInt(timeMatch[2], 10);
-          const ampm = timeMatch[4]?.toLowerCase();
-          if (ampm === 'pm' && hours < 12) hours += 12;
-          if (ampm === 'am' && hours === 12) hours = 0;
-          d.setHours(hours, mins, 0, 0);
-        }
-        return d;
-      }
-      const timeOnlyMatch = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?$/i);
-      if (timeOnlyMatch) {
-        const d = new Date();
-        let hours = parseInt(timeOnlyMatch[1], 10);
-        const mins = parseInt(timeOnlyMatch[2], 10);
-        const ampm = timeOnlyMatch[4]?.toLowerCase();
-        if (ampm === 'pm' && hours < 12) hours += 12;
-        if (ampm === 'am' && hours === 12) hours = 0;
-        d.setHours(hours, mins, 0, 0);
         return d;
       }
       const parsed = new Date(str);
@@ -231,41 +197,56 @@ export default function App() {
     };
 
     const now = new Date();
-    const todayLocalStr = toLocalDateStr(now);
-
-    const getCaseCreationDate = (c: RecoveryCase): Date => {
-      if (c.createdAt) {
-        const d = parseToDate(c.createdAt);
-        if (d) return d;
-      }
-      if (Array.isArray(c.timeline) && c.timeline.length > 0 && c.timeline[0]?.timestamp) {
-        const d = parseToDate(c.timeline[0].timestamp);
-        if (d) return d;
-      }
-      return now;
-    };
-
-    const getCaseRecoveryDate = (c: RecoveryCase): Date | null => {
-      if (c.status !== 'Recovered') return null;
-      if (c.recoveredAt) {
-        const d = parseToDate(c.recoveredAt);
-        if (d) return d;
-      }
-      if (Array.isArray(c.timeline)) {
-        for (let i = c.timeline.length - 1; i >= 0; i--) {
-          const t = c.timeline[i];
-          if (t && (t.type === 'recovered' || (t.title && /settled|recovered|captured/i.test(t.title)))) {
-            const d = parseToDate(t.timestamp || t.timeDisplay);
-            if (d) return d;
-          }
-        }
-      }
-      return now;
-    };
-
     let daysCount = 7;
     if (dateRange === '30d') daysCount = 30;
     else if (dateRange === 'month') daysCount = Math.max(7, now.getDate());
+
+    // 1. Build recovery map directly from Payments ledger
+    const dailyRecoveredMap = new Map<string, number>();
+    const processedPaymentCaseIds = new Set<string>();
+
+    payments.forEach(p => {
+      if (p.status === 'succeeded' || p.status === 'captured') {
+        const pDate = parseToDate(p.isoTimestamp || p.timestamp || (p as any).createdAt) || now;
+        const dateStr = toLocalDateStr(pDate);
+        const amt = Number(p.amount || 0);
+        dailyRecoveredMap.set(dateStr, (dailyRecoveredMap.get(dateStr) || 0) + amt);
+
+        if (p.caseId) processedPaymentCaseIds.add(p.caseId);
+        if (p.razorpayPaymentId) processedPaymentCaseIds.add(p.razorpayPaymentId);
+        if (p.invoiceId) processedPaymentCaseIds.add(p.invoiceId);
+      }
+    });
+
+    // 2. Also check if any recovered case is not already in payments ledger
+    cases.forEach(c => {
+      if (c.status === 'Recovered') {
+        const isAlreadyCounted = (c.id && processedPaymentCaseIds.has(c.id)) ||
+                                 (c.razorpayPaymentId && processedPaymentCaseIds.has(c.razorpayPaymentId)) ||
+                                 (c.invoiceNumber && processedPaymentCaseIds.has(c.invoiceNumber));
+        if (!isAlreadyCounted) {
+          let recDate = c.recoveredAt ? parseToDate(c.recoveredAt) : null;
+          if (!recDate && Array.isArray(c.timeline)) {
+            for (let j = c.timeline.length - 1; j >= 0; j--) {
+              const t = c.timeline[j];
+              if (t && (t.type === 'recovered' || /settled|recovered|captured/i.test(t.title || ''))) {
+                recDate = parseToDate(t.timestamp || t.timeDisplay);
+                if (recDate) break;
+              }
+            }
+          }
+          if (!recDate && c.updated && c.updated.toLowerCase().includes('settled')) {
+            recDate = parseToDate(c.updated);
+          }
+          if (!recDate && c.createdAt) recDate = parseToDate(c.createdAt);
+          if (!recDate) recDate = now;
+
+          const dateStr = toLocalDateStr(recDate);
+          const amt = Number(c.recoveredAmount || c.amount || 0);
+          dailyRecoveredMap.set(dateStr, (dailyRecoveredMap.get(dateStr) || 0) + amt);
+        }
+      }
+    });
 
     const points: Array<{ date: string; dayStr: string; revenueAtRisk: number; recovered: number; remaining: number; isToday: boolean }> = [];
 
@@ -278,89 +259,40 @@ export default function App() {
       if (isToday) label = 'Today';
       else if (i === 1) label = 'Yesterday';
 
-      let dayRecovered = 0;
+      // Exact daily recovered amount from payments ledger on this specific date
+      const dayRecovered = dailyRecoveredMap.get(targetDayStr) || 0;
+
+      // Active Revenue at Risk on this specific date
       let dayAtRisk = 0;
-      const countedCaseIds = new Set<string>();
+      cases.forEach(c => {
+        let createdDate = c.createdAt ? parseToDate(c.createdAt) : null;
+        if (!createdDate && Array.isArray(c.timeline) && c.timeline.length > 0) {
+          createdDate = parseToDate(c.timeline[0]?.timestamp);
+        }
+        if (!createdDate) createdDate = now;
+        const createdStr = toLocalDateStr(createdDate);
 
-      if (isToday) {
-        // TODAY (Live Real-Time):
-        // Active at risk = sum of all currently unrecovered cases
-        dayAtRisk = cases
-          .filter(c => c.status !== 'Recovered')
-          .reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
-
-        // Recovered today = all cases recovered today
-        cases.forEach(c => {
-          if (c.status === 'Recovered') {
-            const recDate = getCaseRecoveryDate(c);
-            if (recDate && toLocalDateStr(recDate) === targetDayStr) {
-              const amt = Number(c.recoveredAmount || c.amount || 0);
-              dayRecovered += amt;
-              if (c.id) countedCaseIds.add(c.id);
-              if (c.razorpayPaymentId) countedCaseIds.add(c.razorpayPaymentId);
-              if (c.invoiceNumber) countedCaseIds.add(c.invoiceNumber);
-            }
-          }
-        });
-
-        // Succeeded payments today (not already counted via linked cases)
-        payments.forEach(p => {
-          if (p.status === 'succeeded' || p.status === 'captured') {
-            const pDate = parseToDate(p.isoTimestamp || (p as any).createdAt || p.timestamp);
-            if (pDate && toLocalDateStr(pDate) === targetDayStr) {
-              const isAlreadyCounted = (p.caseId && countedCaseIds.has(p.caseId)) || 
-                                       (p.id && countedCaseIds.has(p.id)) || 
-                                       (p.razorpayPaymentId && countedCaseIds.has(p.razorpayPaymentId)) ||
-                                       (p.invoiceId && countedCaseIds.has(p.invoiceId));
-              if (!isAlreadyCounted) {
-                dayRecovered += Number(p.amount || 0);
+        let recDate: Date | null = null;
+        if (c.status === 'Recovered') {
+          if (c.recoveredAt) recDate = parseToDate(c.recoveredAt);
+          if (!recDate && Array.isArray(c.timeline)) {
+            for (let j = c.timeline.length - 1; j >= 0; j--) {
+              const t = c.timeline[j];
+              if (t && (t.type === 'recovered' || /settled|recovered|captured/i.test(t.title || ''))) {
+                recDate = parseToDate(t.timestamp || t.timeDisplay);
+                if (recDate) break;
               }
             }
           }
-        });
-      } else {
-        // PAST DAYS (Historical Ledger - 100% IMMUTABLE & INDEPENDENT of today's actions):
-        cases.forEach(c => {
-          const cCreated = getCaseCreationDate(c);
-          const cCreatedStr = toLocalDateStr(cCreated);
-          const cRec = getCaseRecoveryDate(c);
-          const cRecStr = cRec ? toLocalDateStr(cRec) : null;
+        }
+        const recStr = recDate ? toLocalDateStr(recDate) : null;
 
-          // Did this case exist on or before targetDay?
-          if (cCreatedStr <= targetDayStr) {
-            // Was it already recovered on or before targetDay?
-            if (cRecStr && cRecStr <= targetDayStr) {
-              // If recovered ON this specific historical day, record it
-              if (cRecStr === targetDayStr) {
-                const amt = Number(c.recoveredAmount || c.amount || 0);
-                dayRecovered += amt;
-                if (c.id) countedCaseIds.add(c.id);
-                if (c.razorpayPaymentId) countedCaseIds.add(c.razorpayPaymentId);
-                if (c.invoiceNumber) countedCaseIds.add(c.invoiceNumber);
-              }
-            } else {
-              // Not recovered on this targetDay (either unrecovered or recovered on a later day/today) -> was AT RISK on targetDay!
-              dayAtRisk += Number(c.amount || 0);
-            }
+        if (createdStr <= targetDayStr) {
+          if (!recStr || recStr >= targetDayStr) {
+            dayAtRisk += Number(c.amount || 0);
           }
-        });
-
-        // Historical payments succeeded on this specific past day
-        payments.forEach(p => {
-          if (p.status === 'succeeded' || p.status === 'captured') {
-            const pDate = parseToDate(p.isoTimestamp || (p as any).createdAt || p.timestamp);
-            if (pDate && toLocalDateStr(pDate) === targetDayStr) {
-              const isAlreadyCounted = (p.caseId && countedCaseIds.has(p.caseId)) || 
-                                       (p.id && countedCaseIds.has(p.id)) || 
-                                       (p.razorpayPaymentId && countedCaseIds.has(p.razorpayPaymentId)) ||
-                                       (p.invoiceId && countedCaseIds.has(p.invoiceId));
-              if (!isAlreadyCounted) {
-                dayRecovered += Number(p.amount || 0);
-              }
-            }
-          }
-        });
-      }
+        }
+      });
 
       points.push({
         date: label,
@@ -711,13 +643,27 @@ export default function App() {
   }, [user?.id, syncLiveRazorpayData]);
 
   // Computed Financial Metrics
-  const totalAtRisk = cases.reduce((sum, c) => sum + (c.status !== 'Recovered' ? c.amount : 0), 0);
-  const totalRecovered = cases.reduce((sum, c) => sum + (c.status === 'Recovered' ? (c.recoveredAmount || c.amount) : 0), 0);
+  const totalAtRisk = cases.reduce((sum, c) => sum + (c.status !== 'Recovered' ? (Number(c.amount) || 0) : 0), 0);
+  const totalRecovered = cases.reduce((sum, c) => sum + (c.status === 'Recovered' ? (Number(c.recoveredAmount || c.amount) || 0) : 0), 0);
   const activeCasesCount = cases.filter(c => c.status !== 'Recovered').length;
   const scheduledCount = cases.filter(c => c.status !== 'Recovered' && c.scheduledRetry?.status !== 'executed').length;
-  const recoveryRate = Math.round((totalRecovered / ((totalRecovered + totalAtRisk) || 1)) * 100);
-  const casesAnalyzed = cases.length;
-  const actionsExecuted = activities.length || (cases.filter(c => c.status === 'Recovered').length + 5);
+  const recoveryRate = (totalRecovered + totalAtRisk) > 0 ? Math.round((totalRecovered / (totalRecovered + totalAtRisk)) * 100) : 0;
+  
+  // Real Cases Analyzed by Agent
+  const diagnosedCasesCount = cases.filter(c => caseHasAIDiagnosis(c)).length;
+  const casesAnalyzed = diagnosedCasesCount > 0 ? diagnosedCasesCount : cases.length;
+
+  // Real actions executed by Agent
+  const executedActionsFromCases = cases.reduce((count, c) => {
+    let caseActions = 0;
+    if (c.status === 'Recovered') caseActions++;
+    if (c.scheduledRetry?.status === 'executed') caseActions++;
+    if (Array.isArray(c.timeline)) {
+      caseActions += c.timeline.filter(t => t && (t.type === 'action' || t.type === 'link' || t.type === 'scheduled' || t.type === 'mandate' || t.type === 'reminder' || t.type === 'success' || (t.title && /link|retry|recovered|settled/i.test(t.title)))).length;
+    }
+    return count + caseActions;
+  }, 0);
+  const actionsExecuted = Math.max(activities.length, executedActionsFromCases, cases.filter(c => c.status === 'Recovered').length);
 
   // Handlers
   const handleOpenCase = (caseItem: RecoveryCase) => {

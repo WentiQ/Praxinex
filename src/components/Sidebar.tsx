@@ -99,29 +99,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* Live Agent Status Widget */}
-        <div className="px-3 py-2.5 border-b border-[#EAEAEA]">
-          <div className="bg-[#F8F9FA] border border-[#E7E7E7] rounded-lg p-2.5">
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center space-x-1.5">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
-                </span>
-                <span className="text-[11px] font-medium text-[#171717]">Agent Status</span>
-              </div>
-              <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                Active
-              </span>
-            </div>
-            <p className="text-[10.5px] text-[#737373] leading-snug">
-              Monitoring Razorpay & bounded recovery policies.
-            </p>
-          </div>
-        </div>
-
         {/* Controls: Date Range & Live Simulator */}
-        <div className="px-3 py-2.5 space-y-2 border-b border-[#EAEAEA] bg-[#FAFAFA]/60">
+        <div className="px-3 py-2.5 space-y-2 border-b border-[#EAEAEA]">
           {/* Date Range Selector */}
           {setDateRange && (
             <div className="relative">
@@ -129,7 +108,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 id="sidebar-date-range-select"
                 value={dateRange || 'today'}
                 onChange={(e) => setDateRange(e.target.value)}
-                className="w-full appearance-none bg-white border border-[#E7E7E7] hover:border-neutral-400 text-xs text-[#171717] font-medium py-1.5 pl-2.5 pr-7 rounded-md cursor-pointer focus:outline-none focus:ring-1 focus:ring-neutral-900 transition-colors shadow-2xs"
+                className="w-full appearance-none bg-white border border-[#E7E7E7] hover:border-neutral-400 hover:bg-neutral-50 text-xs text-[#171717] font-medium py-1.5 pl-2.5 pr-7 rounded-md cursor-pointer focus:outline-none focus:ring-1 focus:ring-neutral-900 transition-colors shadow-2xs"
               >
                 <option value="today">Today ({new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})</option>
                 <option value="7d">Last 7 Days</option>
