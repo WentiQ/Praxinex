@@ -98,20 +98,38 @@ class DatabaseManager {
               return matched.profile;
             }
             // If user is authenticated and there is a saved merchant profile, fallback to it
-            if (allMerchants.length === 1 && allMerchants[0].profile) {
+            if (allMerchants.length > 0 && allMerchants[0].profile) {
               return allMerchants[0].profile;
             }
           }
-          return null;
-        } else {
-          // Guest / Unauthenticated: strictly null
-          return null;
+        }
+
+        // 3. Fallback for unauthenticated/system/background tasks: fetch latest valid merchant profile
+        const { data: fallbackMerchants } = await this.supabase
+          .from('merchant_settings')
+          .select('*')
+          .not('id', 'in', '("recovery_policies","auto_traffic_state","most_recent_case_id")')
+          .order('updated_at', { ascending: false });
+
+        if (fallbackMerchants && fallbackMerchants.length > 0) {
+          const withKeys = fallbackMerchants.find(m => m.profile && m.profile.razorpayKeyId && m.profile.razorpayKeySecret);
+          if (withKeys && withKeys.profile) {
+            return withKeys.profile;
+          }
+          if (fallbackMerchants[0].profile) {
+            return fallbackMerchants[0].profile;
+          }
         }
       } catch (err: any) {
         console.error('Supabase getMerchant error:', err.message);
       }
     }
-    return userId ? null : this.guestMemoryCache.merchant;
+    return this.guestMemoryCache.merchant || (process.env.RAZORPAY_KEY_ID ? {
+      razorpayKeyId: process.env.RAZORPAY_KEY_ID,
+      razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET,
+      name: 'Active Merchant',
+      currency: 'INR'
+    } : null);
   }
 
   async getAllMerchants(): Promise<any[]> {

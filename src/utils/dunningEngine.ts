@@ -138,7 +138,7 @@ export function generatePersonalizedCopy(opts: GenerateCopyOptions): Personalize
     issue,
     failureCode = '',
     failureReason = '',
-    paymentLinkUrl = 'https://rzp.io/i/live_recovery',
+    paymentLinkUrl = '',
     merchantName = 'Enterprise Merchant',
     isSubscriptionMandate = false
   } = opts;
@@ -224,9 +224,9 @@ export function generatePersonalizedCopy(opts: GenerateCopyOptions): Personalize
  * (Excludes UPI as per requirements).
  */
 export function generateMandateRepairInfo(caseItem: RecoveryCase): MandateRepairInfo {
-  const subId = caseItem.id.toLowerCase().includes('sub') ? caseItem.id : `sub_mandate_${caseItem.id}`;
-  const repairId = `mnd_rep_${Math.random().toString(36).substring(2, 9)}`;
-  const repairUrl = `https://rzp.io/m/${repairId}`;
+  const subId = caseItem.razorpayPaymentId || caseItem.id;
+  const repairId = caseItem.razorpayPaymentId || caseItem.id;
+  const repairUrl = caseItem.paymentLinkUrl || '';
 
   const expiresDate = new Date();
   expiresDate.setDate(expiresDate.getDate() + 7);

@@ -946,8 +946,8 @@ export default function App() {
   }, [cases, isInitialLoading]);
 
 
-  const triggerAutonomousDiagnosis = useCallback(async (customCaseId?: string) => {
-    if (customCaseId) {
+  const triggerAutonomousDiagnosis = useCallback(async (customCaseId?: string | string[]) => {
+    if (typeof customCaseId === 'string' && customCaseId) {
       const targetCase = cases.find(c => c.id === customCaseId);
       if (targetCase) {
         try {

@@ -122,34 +122,7 @@ function safeToIsoString(val: any): string {
   return new Date().toISOString();
 }
 
-// Generator for distinct, unique live Razorpay payment & invoice links following official Razorpay URL schemas (https://rzp.io/rzp/...)
-function generateUniqueRazorpayLink(caseId?: string, customerName?: string, entityType?: 'invoice' | 'subscription' | 'payment_link' | boolean): { url: string; id: string } {
-  const randSlug = Math.random().toString(36).substring(2, 8);
-  const dateSuffix = Date.now().toString().slice(-4);
-  const rzpSlug = `${randSlug}${dateSuffix}`;
-
-  if (entityType === 'invoice' || entityType === true) {
-    const id = `inv_TV${randSlug}${dateSuffix}`;
-    const url = `https://rzp.io/rzp/${rzpSlug}`;
-    return { url, id };
-  }
-
-  if (entityType === 'subscription') {
-    const id = `sub_TV${randSlug}${dateSuffix}`;
-    const url = `https://rzp.io/rzp/${rzpSlug}`;
-    return { url, id };
-  }
-
-  const id = `plink_TV${randSlug}${dateSuffix}`;
-  const url = `https://rzp.io/rzp/${rzpSlug}`;
-  return { url, id };
-}
-
-// Payment Link Limit Threshold Guardrail (30 Links)
-let totalStandardPaymentLinksGenerated = 0;
-const MAX_STANDARD_PAYMENT_LINKS_LIMIT = 30;
-let paymentLinksLimitReached = false;
-
+// Validates customer names to detect placeholders
 function isGenericCustomerName(name?: string): boolean {
   if (!name || typeof name !== 'string') return true;
   const trimmed = name.trim().toLowerCase();
@@ -299,8 +272,8 @@ async function createRealRazorpayPaymentLink(params: {
 }): Promise<{ url: string; id: string }> {
   const { keyId: activeKeyId, keySecret: activeKeySecret } = await getActiveMerchantCredentials(params.keyId, params.keySecret);
 
-  const isInvoiceCase = params.issue === 'Invoice overdue' || params.isInvoice === true;
-  const isSubscriptionCase = params.issue === 'Subscription lapsed';
+  const isInvoiceCase = params.issue === 'Invoice overdue' || params.isInvoice === true || (params.caseId && params.caseId.includes('INV'));
+  const isSubscriptionCase = params.issue === 'Subscription lapsed' || (params.caseId && params.caseId.includes('SUB'));
 
   const resolved = resolveCustomerDetails({
     name: params.customerName,
@@ -308,31 +281,48 @@ async function createRealRazorpayPaymentLink(params: {
     phone: params.customerPhone,
     entityId: params.caseId
   });
-  const cleanName = resolved.name;
-  const cleanEmail = resolved.email;
-  const cleanPhone = resolved.phone;
+  const cleanName = resolved.name || 'Valued Customer';
+  const cleanEmail = resolved.email || 'customer@gmail.com';
+  const cleanPhone = formatCleanPhone(resolved.phone);
 
-  if (!activeKeyId || !activeKeySecret) {
-    console.warn('⚠️ Razorpay credentials not configured in user database. Using unique link fallback.');
-    return generateUniqueRazorpayLink(
-      params.caseId,
-      cleanName,
-      isInvoiceCase ? 'invoice' : (isSubscriptionCase ? 'subscription' : 'payment_link')
-    );
-  }
-
-  const cleanAmount = Math.max(100, Math.round((Number(params.amount) || 100) * 100)); // paise (min 100 = 1 INR)
+  const cleanAmount = Math.max(100, Math.round((Number(params.amount) || 100) * 100)); // in paise (min 100 = 1 INR)
   const desc = (params.description || `Recovery: Case ${params.caseId}`).slice(0, 100);
 
   // 1. For SUBSCRIPTION cases: Call Official Razorpay Subscriptions API (/subscriptions)
-  if (isSubscriptionCase) {
+  if (isSubscriptionCase && activeKeyId && activeKeySecret) {
     try {
       let targetPlanId = params.planId;
       if (!targetPlanId) {
-        // Fetch existing plans from account to use valid plan
-        const plansData = await razorpayFetch('/plans?count=10', { method: 'GET' }, activeKeyId, activeKeySecret);
-        if (plansData?.items && plansData.items.length > 0) {
-          targetPlanId = plansData.items[0].id;
+        try {
+          const plansData = await razorpayFetch('/plans?count=10', { method: 'GET' }, activeKeyId, activeKeySecret);
+          if (plansData?.items && plansData.items.length > 0) {
+            targetPlanId = plansData.items[0].id;
+          }
+        } catch (planErr: any) {
+          console.warn('[Razorpay API] Plan lookup notice:', planErr.message);
+        }
+      }
+
+      if (!targetPlanId) {
+        try {
+          const newPlan = await razorpayFetch('/plans', {
+            method: 'POST',
+            body: JSON.stringify({
+              period: 'monthly',
+              interval: 1,
+              item: {
+                name: 'Enterprise Recurring Subscription',
+                amount: cleanAmount,
+                currency: 'INR',
+                description: 'Monthly Recurring Recovery Plan'
+              }
+            })
+          }, activeKeyId, activeKeySecret);
+          if (newPlan && newPlan.id) {
+            targetPlanId = newPlan.id;
+          }
+        } catch (createPlanErr: any) {
+          console.warn('[Razorpay API] Plan creation notice:', createPlanErr.message);
         }
       }
 
@@ -356,24 +346,21 @@ async function createRealRazorpayPaymentLink(params: {
           })
         }, activeKeyId, activeKeySecret);
 
-        if (subRes && (subRes.short_url || subRes.id)) {
-          const realUrl = subRes.short_url || `https://rzp.io/i/${subRes.id}`;
-          const subId = subRes.id || `sub_${Date.now().toString().slice(-8)}`;
-          console.log(`✅ [Razorpay Subscriptions API] Real Official Subscription Link created: ${realUrl} (${subId}) for Plan: ${targetPlanId}`);
+        if (subRes && subRes.short_url) {
+          console.log(`✅ [Razorpay Subscriptions API] Real Subscription created & saved: ${subRes.short_url} (${subRes.id}) for Plan: ${targetPlanId}`);
           return {
-            url: realUrl,
-            id: subId
+            url: subRes.short_url,
+            id: subRes.id
           };
         }
       }
     } catch (errSub: any) {
-      console.warn('[Razorpay Subscriptions API] Subscription creation notice:', errSub.message);
+      console.warn('[Razorpay Subscriptions API] Subscription creation fallback to payment link:', errSub.message);
     }
-    return generateUniqueRazorpayLink(params.caseId, cleanName, 'subscription');
   }
 
   // 2. For INVOICE cases: Call Razorpay Invoices API (/invoices)
-  if (isInvoiceCase) {
+  if (isInvoiceCase && activeKeyId && activeKeySecret) {
     try {
       const invoiceRes = await razorpayFetch('/invoices', {
         method: 'POST',
@@ -403,25 +390,21 @@ async function createRealRazorpayPaymentLink(params: {
         })
       }, activeKeyId, activeKeySecret);
 
-      if (invoiceRes && (invoiceRes.short_url || invoiceRes.id)) {
-        const realUrl = invoiceRes.short_url || `https://rzp.io/rzp/${(invoiceRes.id || '').replace(/^inv_/, '')}`;
-        const invId = invoiceRes.id || `inv_${Date.now().toString().slice(-8)}`;
-        console.log(`✅ [Razorpay API] Real Official Invoice created: ${realUrl} (${invId}) for ₹${cleanAmount / 100}`);
+      if (invoiceRes && invoiceRes.short_url) {
+        console.log(`✅ [Razorpay Invoices API] Real Invoice created & saved: ${invoiceRes.short_url} (${invoiceRes.id}) for ₹${cleanAmount / 100}`);
         return {
-          url: realUrl,
-          id: invId
+          url: invoiceRes.short_url,
+          id: invoiceRes.id
         };
       }
     } catch (errInvoice: any) {
-      console.warn('[Razorpay API] Invoice creation notice:', errInvoice.message);
+      console.warn('[Razorpay Invoices API] Invoice creation fallback to payment link:', errInvoice.message);
     }
-    return generateUniqueRazorpayLink(params.caseId, cleanName, 'invoice');
   }
 
-  // 3. For PAYMENTS & CHECKOUT cases: Call Razorpay Payment Links API (/payment_links)
-  if (!paymentLinksLimitReached) {
+  // 3. For PAYMENTS & CHECKOUT (and robust guaranteed fallback): Call Razorpay Payment Links API (/payment_links)
+  if (activeKeyId && activeKeySecret) {
     try {
-      // Use high-entropy reference_id to avoid duplicates
       const uniqueSuffix = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
       const cleanRefId = `ref_${uniqueSuffix}`.slice(0, 40);
       const linkRes = await razorpayFetch('/payment_links', {
@@ -445,8 +428,8 @@ async function createRealRazorpayPaymentLink(params: {
           notes: {
             caseId: params.caseId,
             origin: 'AI_RECOVERY_AGENT',
-            issue: params.issue || 'Payment failed',
-            issueType: params.issue || 'Payment failed',
+            issue: params.issue || (isInvoiceCase ? 'Invoice overdue' : (isSubscriptionCase ? 'Subscription lapsed' : 'Payment failed')),
+            issueType: params.issue || (isInvoiceCase ? 'Invoice overdue' : (isSubscriptionCase ? 'Subscription lapsed' : 'Payment failed')),
             customerName: cleanName,
             customerEmail: cleanEmail,
             customerPhone: cleanPhone
@@ -455,43 +438,19 @@ async function createRealRazorpayPaymentLink(params: {
       }, activeKeyId, activeKeySecret);
 
       if (linkRes && linkRes.short_url) {
-        totalStandardPaymentLinksGenerated++;
-        if (totalStandardPaymentLinksGenerated >= MAX_STANDARD_PAYMENT_LINKS_LIMIT) {
-          paymentLinksLimitReached = true;
-        }
-        console.log(`✅ [Razorpay API] Real Official Payment Link created: ${linkRes.short_url} (${linkRes.id}) for ₹${cleanAmount / 100} [Issue: ${params.issue}]`);
+        console.log(`✅ [Razorpay Payment Links API] Real Payment Link created & saved: ${linkRes.short_url} (${linkRes.id}) for ₹${cleanAmount / 100} [Issue: ${params.issue || 'Payment failed'}]`);
         return {
           url: linkRes.short_url,
           id: linkRes.id
         };
-      } else if (linkRes && linkRes.error) {
-        // Only mark limit reached on actual quota errors — not on generic failures
-        const errCode = linkRes.error?.code || '';
-        const errDesc = (linkRes.error?.description || '').toLowerCase();
-        if (errCode === 'BAD_REQUEST_ERROR' && (errDesc.includes('limit') || errDesc.includes('quota') || errDesc.includes('max'))) {
-          paymentLinksLimitReached = true;
-          console.warn('[Razorpay API] Payment links quota reached, switching to invoice fallback');
-        } else {
-          console.warn('[Razorpay API] Payment link error (non-quota):', linkRes.error);
-        }
       }
     } catch (errPlink: any) {
-      // Only mark limit reached if it's genuinely a quota/limit API error
-      const msg = (errPlink.message || '').toLowerCase();
-      if (msg.includes('limit') || msg.includes('quota') || msg.includes('max payment')) {
-        paymentLinksLimitReached = true;
-        console.warn('[Razorpay API] Payment links quota reached:', errPlink.message);
-      } else {
-        console.warn('[Razorpay API] Payment link creation failed (retrying next time):', errPlink.message);
-      }
+      console.error('❌ [Razorpay Payment Links API] Payment link creation failed:', errPlink.message);
+      throw errPlink;
     }
-  } else {
-    console.log(`[Razorpay API] Payment links quota reached — using unique link fallback for [Issue: ${params.issue}]`);
   }
 
-  // Fallback: Dynamic unique official link
-  const fallback = generateUniqueRazorpayLink(params.caseId, params.customerName, 'payment_link');
-  return fallback;
+  throw new Error('Razorpay credentials not configured. Please add Key ID and Secret in Integrations.');
 }
 
 // In-memory Webhook Logs and Live Ingested State
@@ -554,36 +513,15 @@ let autoTrafficConfig: AutoTrafficEngineConfig = {
 
 function sanitizeCasePaymentUrls(casesList: any[]) {
   if (!Array.isArray(casesList)) return;
-  const seenUrls = new Set<string>();
   casesList.forEach((c) => {
     if (!c) return;
 
-    const isInvoice = c.issue === 'Invoice overdue' || 
-      (c.id && c.id.toLowerCase().includes('inv')) ||
-      (c.issue && c.issue.toLowerCase().includes('invoice'));
-    const isSubscription = c.issue === 'Subscription lapsed' || (c.id && c.id.toLowerCase().includes('sub'));
-
-    const url = c.paymentLinkUrl || '';
-    const isInvalid = !url || 
-      url.startsWith('/pay/') || 
-      url.includes('rzp.io/rzp/') || 
-      seenUrls.has(url);
-    
     // Scrub any legacy dummy timeline entries ("AI strategy evaluated & action assigned")
     if (Array.isArray(c.timeline)) {
       c.timeline = c.timeline.filter((t: any) => 
         t && !(typeof t.title === 'string' && t.title.includes('AI strategy evaluated'))
       );
     }
-
-    if (isInvalid) {
-      const generated = generateUniqueRazorpayLink(c.id, c.customerName, isInvoice ? 'invoice' : (isSubscription ? 'subscription' : 'payment_link'));
-      c.paymentLinkUrl = generated.url;
-      if (!c.razorpayPaymentId || c.razorpayPaymentId.startsWith('order_')) {
-        c.razorpayPaymentId = generated.id;
-      }
-    }
-    if (c.paymentLinkUrl) seenUrls.add(c.paymentLinkUrl);
   });
 }
 
@@ -2370,17 +2308,13 @@ app.post('/api/dunning/dispatch', async (req, res) => {
     let linkUrl = '';
     let linkId = '';
 
-    if (isMandateRepair) {
-      // Generate dedicated card mandate repair link (excluding UPI)
-      linkId = `mnd_rep_${Math.random().toString(36).substring(2, 9)}`;
-      linkUrl = `https://rzp.io/m/${linkId}`;
-    } else if (targetCase && targetCase.paymentLinkUrl && !targetCase.linkCancelled && targetCase.paymentLinkStatus !== 'cancelled' && targetCase.paymentLinkStatus !== 'expired') {
-      // Reuse existing active payment link to send reminder
+    if (targetCase && targetCase.paymentLinkUrl && !targetCase.linkCancelled && targetCase.paymentLinkStatus !== 'cancelled' && targetCase.paymentLinkStatus !== 'expired' && !targetCase.paymentLinkUrl.includes('rzp.io/m/') && !targetCase.paymentLinkUrl.startsWith('/pay/')) {
+      // Reuse existing active working Razorpay link
       linkUrl = targetCase.paymentLinkUrl;
       linkId = targetCase.razorpayPaymentId || `plink_reused_${Date.now()}`;
       console.log(`ℹ️ [Smart Dunning] Reusing existing working payment link for Case ${caseId}: ${linkUrl}`);
     } else {
-      // Generate real/simulated Razorpay dynamic payment link
+      // Generate real official Razorpay link (Subscription, Invoice, or Payment Link)
       const { keyId, keySecret } = await getActiveMerchantCredentials();
       const linkRes = await createRealRazorpayPaymentLink({
         amount: resolvedAmount,
@@ -2388,9 +2322,9 @@ app.post('/api/dunning/dispatch', async (req, res) => {
         customerName: resolvedName,
         customerEmail: resolvedEmail,
         customerPhone: resolvedPhone,
-        description: isMandateRepair ? `Subscription Mandate Update: ${caseId}` : `Smart Dunning Recovery: ${caseId}`,
+        description: isMandateRepair ? `Subscription Mandate Update: ${caseId}` : (targetCase?.issue === 'Invoice overdue' ? `Invoice Settlement: ${caseId}` : `Smart Dunning Recovery: ${caseId}`),
         isInvoice: targetCase?.issue === 'Invoice overdue',
-        issue: targetCase?.issue,
+        issue: isMandateRepair ? 'Subscription lapsed' : targetCase?.issue,
         keyId,
         keySecret
       });
@@ -3156,8 +3090,8 @@ Please output strictly the JSON object.`;
     }
 
     if (diagnosisResult.recommendedAction === 'Mandate repair' && !caseItem.mandateRepair) {
-      const repairId = `mnd_rep_${Math.random().toString(36).substring(2, 9)}`;
-      const repairUrl = `https://rzp.io/m/${repairId}`;
+      const repairId = caseItem.razorpayPaymentId || `sub_${caseItem.id.slice(-6)}`;
+      const repairUrl = caseItem.paymentLinkUrl || `https://rzp.io/rzp/${repairId}`;
       caseItem.paymentLinkUrl = repairUrl;
       caseItem.mandateRepair = {
         mandateId: repairId,
@@ -4007,11 +3941,10 @@ async function generateSingleLiveRazorpayCase(customData?: any, keyId?: string, 
 
     paymentLinkUrl = linkRes.url;
     razorpayPaymentId = linkRes.id;
-    console.log(`⚡ [Traffic Engine] Razorpay Link created: ${paymentLinkUrl} (${razorpayPaymentId}) for ${customerName} (₹${amount}) [Issue: ${issue}]`);
+    console.log(`⚡ [Traffic Engine] Razorpay Link created & saved: ${paymentLinkUrl} (${razorpayPaymentId}) for ${customerName} (₹${amount}) [Issue: ${issue}]`);
   } catch (err: any) {
-    const fallback = generateUniqueRazorpayLink(caseId, customerName, isSubscription ? 'subscription' : (isInvoice ? 'invoice' : 'payment_link'));
-    paymentLinkUrl = fallback.url;
-    razorpayPaymentId = fallback.id;
+    console.error('❌ [Traffic Engine] Error creating Razorpay link:', err.message);
+    throw err;
   }
 
   // 4. Build Lifecycle Timeline (Clean Payment Link, Invoice & Subscription Tracking)
@@ -4959,9 +4892,27 @@ app.post('/api/agent/chat', async (req, res) => {
         if (mandateMatch && mandateMatch[1]) {
           const targetCase = cases.find((c: any) => c.id.toLowerCase().includes(mandateMatch[1].toLowerCase()));
           if (targetCase) {
-            const repairId = `mnd_rep_${Math.random().toString(36).substring(2, 9)}`;
-            const repairUrl = `https://rzp.io/m/${repairId}`;
+            let repairUrl = targetCase.paymentLinkUrl;
+            let repairId = targetCase.razorpayPaymentId || targetCase.id;
+            if (!repairUrl || repairUrl.includes('rzp.io/m/') || repairUrl.startsWith('/pay/')) {
+              try {
+                const linkRes = await createRealRazorpayPaymentLink({
+                  amount: targetCase.amount,
+                  caseId: targetCase.id,
+                  customerName: targetCase.customerName,
+                  customerEmail: targetCase.customerEmail,
+                  customerPhone: targetCase.customerPhone,
+                  description: `Subscription Mandate Update: ${targetCase.id}`,
+                  issue: 'Subscription lapsed'
+                });
+                repairUrl = linkRes.url;
+                repairId = linkRes.id;
+              } catch {
+                repairUrl = targetCase.paymentLinkUrl || '';
+              }
+            }
             targetCase.paymentLinkUrl = repairUrl;
+            targetCase.razorpayPaymentId = repairId;
             targetCase.status = 'Awaiting payment';
             targetCase.recommendedAction = 'Mandate repair';
             targetCase.updated = 'Just now';
@@ -5415,9 +5366,27 @@ app.post('/api/agent/chat', async (req, res) => {
     } else if (queryLower.includes('repair mandate') || queryLower.includes('subscription')) {
       const matchedCase = cases.find((c: any) => c.issue === 'Subscription lapsed' || queryLower.includes(c.id.toLowerCase())) || cases.find((c: any) => c.status !== 'Recovered');
       if (matchedCase) {
-        const repairId = `mnd_rep_${Math.random().toString(36).substring(2, 9)}`;
-        const repairUrl = `https://rzp.io/m/${repairId}`;
+        let repairUrl = matchedCase.paymentLinkUrl;
+        let repairId = matchedCase.razorpayPaymentId || matchedCase.id;
+        if (!repairUrl || repairUrl.includes('rzp.io/m/') || repairUrl.startsWith('/pay/')) {
+          try {
+            const linkRes = await createRealRazorpayPaymentLink({
+              amount: matchedCase.amount,
+              caseId: matchedCase.id,
+              customerName: matchedCase.customerName,
+              customerEmail: matchedCase.customerEmail,
+              customerPhone: matchedCase.customerPhone,
+              description: `Subscription Mandate Update: ${matchedCase.id}`,
+              issue: 'Subscription lapsed'
+            });
+            repairUrl = linkRes.url;
+            repairId = linkRes.id;
+          } catch {
+            repairUrl = matchedCase.paymentLinkUrl || '';
+          }
+        }
         matchedCase.paymentLinkUrl = repairUrl;
+        matchedCase.razorpayPaymentId = repairId;
         matchedCase.status = 'Awaiting payment';
         matchedCase.recommendedAction = 'Mandate repair';
 

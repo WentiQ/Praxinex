@@ -68,7 +68,7 @@ export interface TimelineEvent {
   timeDisplay: string;
   title: string;
   description: string;
-  type: 'failure' | 'detection' | 'diagnosis' | 'action' | 'success' | 'escalation' | 'scheduled';
+  type: 'failure' | 'detection' | 'diagnosis' | 'action' | 'success' | 'escalation' | 'scheduled' | 'recovered' | 'link' | 'mandate' | 'reminder' | string;
   actionType?: string;
   channel?: CommunicationChannel;
 }
@@ -110,6 +110,7 @@ export interface ScoringBreakdown {
 
 export interface RecoveryCase {
   id: string;
+  userId?: string;
   customerName: string;
   customerEmail: string;
   customerPhone?: string;

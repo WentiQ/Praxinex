@@ -87,7 +87,7 @@ export const ActionExecutionModal: React.FC<ActionExecutionModalProps> = ({
         issue: caseItem.issue,
         failureCode: caseItem.failureCode,
         failureReason: caseItem.failureReason,
-        paymentLinkUrl: caseItem.paymentLinkUrl || `https://rzp.io/i/${caseItem.id.toLowerCase()}`,
+        paymentLinkUrl: caseItem.paymentLinkUrl || '',
         isSubscriptionMandate: isSub
       });
       setMessageCopies(generated);
@@ -244,7 +244,7 @@ export const ActionExecutionModal: React.FC<ActionExecutionModalProps> = ({
         ]
       };
     } else if (actionMode === 'mandate_repair') {
-      const repairUrl = actionResult?.linkUrl || `https://rzp.io/m/mnd_${Date.now().toString().slice(-6)}`;
+      const repairUrl = actionResult?.paymentLinkUrl || actionResult?.linkUrl || caseItem.paymentLinkUrl || '';
       const mandateInfo = generateMandateRepairInfo(caseItem);
       updatedCase = {
         ...caseItem,
