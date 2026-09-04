@@ -730,10 +730,60 @@ export function buildDeterministicLLMDiagnosis(
 }
 
 /**
- * Checks whether a recovery case has had an AI Root-Cause Diagnosis done at least once in its timeline.
+ * Cleans and deduplicates a case timeline, collapsing rapid/duplicate AI diagnosis events into a single canonical entry.
+ */
+export function cleanAndDeduplicateTimeline(timeline: any[]): any[] {
+  if (!Array.isArray(timeline) || timeline.length === 0) return [];
+
+  const cleaned: any[] = [];
+  let latestDiagEntry: any = null;
+
+  for (const t of timeline) {
+    if (!t) continue;
+    const title = typeof t.title === 'string' ? t.title : '';
+    const type = typeof t.type === 'string' ? t.type.toLowerCase() : '';
+    const isDiag = type === 'diagnosis' || 
+                   type === 'ai_diagnosis' || 
+                   title.toLowerCase().includes('ai root-cause diagnosis') || 
+                   title.toLowerCase().includes('ai diagnosis & decision');
+
+    if (isDiag) {
+      // Keep the latest diagnosis entry
+      if (!latestDiagEntry || new Date(t.timestamp || 0).getTime() >= new Date(latestDiagEntry.timestamp || 0).getTime()) {
+        latestDiagEntry = t;
+      }
+    } else {
+      // Check for exact duplicates of non-diagnosis events by id or (type + title + description)
+      const isDup = cleaned.some((prev: any) => 
+        (t.id && prev.id && t.id === prev.id) ||
+        (prev.type === t.type && prev.title === t.title && prev.description === t.description)
+      );
+      if (!isDup) {
+        cleaned.push(t);
+      }
+    }
+  }
+
+  if (latestDiagEntry) {
+    cleaned.push(latestDiagEntry);
+  }
+
+  return cleaned.sort((a: any, b: any) => 
+    new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime()
+  );
+}
+
+/**
+ * Checks whether a recovery case has had an AI Root-Cause Diagnosis done at least once in its timeline or metadata.
  */
 export function caseHasAIDiagnosis(c: any): boolean {
   if (!c) return false;
+  if (c.llmDiagnosis && (c.llmDiagnosis.recommendedAction || c.llmDiagnosis.rootCauseCategory)) {
+    return true;
+  }
+  if (c.lastDiagnosedAt && (c.aiWhy || c.recommendedAction)) {
+    return true;
+  }
   if (!Array.isArray(c.timeline) || c.timeline.length === 0) return false;
   return c.timeline.some((t: any) => 
     t && 
@@ -755,4 +805,5 @@ export function getUndiagnosedUnrecoveredCases(cases: any[]): any[] {
   if (!Array.isArray(cases)) return [];
   return cases.filter((c: any) => c && c.status !== 'Recovered' && !caseHasAIDiagnosis(c));
 }
+
 

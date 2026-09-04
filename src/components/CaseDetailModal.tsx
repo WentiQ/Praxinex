@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { RecoveryCase, PaymentRecord, TimelineEvent } from '../types';
 import { formatINR, formatTimelineDateTime, formatExactTiming } from '../utils/formatters';
-import { normalizeFailureCode, calculatePredictiveRecoveryScore, buildDeterministicLLMDiagnosis } from '../utils/aiDiagnosisEngine';
+import { normalizeFailureCode, calculatePredictiveRecoveryScore, buildDeterministicLLMDiagnosis, cleanAndDeduplicateTimeline } from '../utils/aiDiagnosisEngine';
 
 interface CaseDetailModalProps {
   caseItem: RecoveryCase | null;
@@ -102,31 +102,12 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
             updatedCaseObj.status = data.case.status || 'Scheduled';
           }
           
-          // Ensure timeline contains each diagnosis event as an audit trail entry
-          const now = new Date();
-          const timeDisplay = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const diagEntryId = `t-diag-${caseItem.id}-${Date.now()}`;
-          const currentTimeline = Array.isArray(data.case?.timeline) && data.case.timeline.length > 0
-            ? [...data.case.timeline]
-            : (Array.isArray(caseItem.timeline) ? [...caseItem.timeline] : []);
-            
-          const newDiagEntry: TimelineEvent = {
-            id: diagEntryId,
-            timestamp: now.toISOString(),
-            timeDisplay,
-            title: `AI Root-Cause Diagnosis (Action: ${data.diagnosis.recommendedAction})`,
-            description: `${data.diagnosis.merchantExplanation} [Optimal Window: ${data.diagnosis.optimalTimeWindow} • Expected Salvage: ${data.diagnosis.recoveryProbability}%]`,
-            type: 'diagnosis',
-            actionType: data.diagnosis.recommendedAction
-          };
-          
-          const isRecentDup = currentTimeline.some(
-            (t: any) => t && t.type === 'diagnosis' && t.title === newDiagEntry.title && t.description === newDiagEntry.description && Math.abs(new Date(t.timestamp || 0).getTime() - now.getTime()) < 2000
+          // Clean and deduplicate timeline
+          const currentTimeline = cleanAndDeduplicateTimeline(
+            Array.isArray(data.case?.timeline) && data.case.timeline.length > 0
+              ? data.case.timeline
+              : (Array.isArray(caseItem.timeline) ? caseItem.timeline : [])
           );
-          if (!isRecentDup) {
-            currentTimeline.push(newDiagEntry);
-          }
-          currentTimeline.sort((a: any, b: any) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
           updatedCaseObj.timeline = currentTimeline;
 
           Object.assign(caseItem, updatedCaseObj);
@@ -134,12 +115,6 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
           if (onCaseUpdated) {
             onCaseUpdated(updatedCaseObj);
           }
-
-          fetch('/api/cases', {
-            method: 'POST',
-            headers: reqHeaders,
-            body: JSON.stringify(updatedCaseObj)
-          }).catch(() => {});
 
           setTimeout(() => setDiagnosisSuccessMsg(false), 4500);
         }
@@ -150,24 +125,18 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
         setDiagnosisSuccessMsg(true);
         const now = new Date();
         const timeDisplay = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const diagEntryId = `t-diag-${caseItem.id}-${Date.now()}`;
-        const currentTimeline = Array.isArray(caseItem.timeline) ? [...caseItem.timeline] : [];
-        const newDiagEntry: TimelineEvent = {
-          id: diagEntryId,
-          timestamp: now.toISOString(),
-          timeDisplay,
-          title: `AI Root-Cause Diagnosis (Action: ${fallback.recommendedAction})`,
-          description: `${fallback.merchantExplanation} [Optimal Window: ${fallback.optimalTimeWindow} • Expected Salvage: ${fallback.recoveryProbability}%]`,
-          type: 'diagnosis',
-          actionType: fallback.recommendedAction
-        };
-        const isRecentDup = currentTimeline.some(
-          (t: any) => t && t.type === 'diagnosis' && t.title === newDiagEntry.title && t.description === newDiagEntry.description && Math.abs(new Date(t.timestamp || 0).getTime() - now.getTime()) < 2000
-        );
-        if (!isRecentDup) {
-          currentTimeline.push(newDiagEntry);
-        }
-        currentTimeline.sort((a: any, b: any) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+        const currentTimeline = cleanAndDeduplicateTimeline([
+          ...(Array.isArray(caseItem.timeline) ? caseItem.timeline : []),
+          {
+            id: `t-diag-${caseItem.id}`,
+            timestamp: now.toISOString(),
+            timeDisplay,
+            title: `AI Root-Cause Diagnosis (Action: ${fallback.recommendedAction})`,
+            description: `${fallback.merchantExplanation} [Optimal Window: ${fallback.optimalTimeWindow} • Expected Salvage: ${fallback.recoveryProbability}%]`,
+            type: 'diagnosis',
+            actionType: fallback.recommendedAction
+          }
+        ]);
 
         const updatedCaseObj = {
           ...caseItem,
@@ -198,24 +167,18 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       setDiagnosisSuccessMsg(true);
       const now = new Date();
       const timeDisplay = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const diagEntryId = `t-diag-${caseItem.id}-${Date.now()}`;
-      const currentTimeline = Array.isArray(caseItem.timeline) ? [...caseItem.timeline] : [];
-      const newDiagEntry: TimelineEvent = {
-        id: diagEntryId,
-        timestamp: now.toISOString(),
-        timeDisplay,
-        title: `AI Root-Cause Diagnosis (Action: ${fallback.recommendedAction})`,
-        description: `${fallback.merchantExplanation} [Optimal Window: ${fallback.optimalTimeWindow} • Expected Salvage: ${fallback.recoveryProbability}%]`,
-        type: 'diagnosis',
-        actionType: fallback.recommendedAction
-      };
-      const isRecentDup = currentTimeline.some(
-        (t: any) => t && t.type === 'diagnosis' && t.title === newDiagEntry.title && t.description === newDiagEntry.description && Math.abs(new Date(t.timestamp || 0).getTime() - now.getTime()) < 2000
-      );
-      if (!isRecentDup) {
-        currentTimeline.push(newDiagEntry);
-      }
-      currentTimeline.sort((a: any, b: any) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+      const currentTimeline = cleanAndDeduplicateTimeline([
+        ...(Array.isArray(caseItem.timeline) ? caseItem.timeline : []),
+        {
+          id: `t-diag-${caseItem.id}`,
+          timestamp: now.toISOString(),
+          timeDisplay,
+          title: `AI Root-Cause Diagnosis (Action: ${fallback.recommendedAction})`,
+          description: `${fallback.merchantExplanation} [Optimal Window: ${fallback.optimalTimeWindow} • Expected Salvage: ${fallback.recoveryProbability}%]`,
+          type: 'diagnosis',
+          actionType: fallback.recommendedAction
+        }
+      ]);
 
       const updatedCaseObj = {
         ...caseItem,
@@ -358,7 +321,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({
       }
     });
 
-    return events.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+    return cleanAndDeduplicateTimeline(events);
   }, [caseItem, liveDiagnosis, matchedPayments]);
 
   if (!isOpen || !caseItem || !normalized || !scoringBreakdown) return null;

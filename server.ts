@@ -7,7 +7,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { db } from './server/db.js';
-import { normalizeFailureCode, calculatePredictiveRecoveryScore, caseHasAIDiagnosis, getUndiagnosedUnrecoveredCases } from './src/utils/aiDiagnosisEngine';
+import { normalizeFailureCode, calculatePredictiveRecoveryScore, caseHasAIDiagnosis, getUndiagnosedUnrecoveredCases, cleanAndDeduplicateTimeline } from './src/utils/aiDiagnosisEngine';
 
 dotenv.config();
 
@@ -538,6 +538,9 @@ function sanitizeCasePaymentUrls(casesList: any[]) {
       sanitizeCasePaymentUrls(c);
       liveCasesStore = c;
       liveCasesStore.forEach((cs: any) => {
+        if (Array.isArray(cs.timeline)) {
+          cs.timeline = cleanAndDeduplicateTimeline(cs.timeline);
+        }
         if (isGenericCustomerName(cs.customerName)) {
           const res = resolveCustomerDetails({ name: cs.customerName, email: cs.customerEmail, phone: cs.customerPhone, company: cs.companyName, entityId: cs.id });
           cs.customerName = res.name;
@@ -839,6 +842,13 @@ app.get('/api/cases', async (req, res) => {
   const userId = getReqUserId(req);
   const cases = await db.getCases(userId);
   sanitizeCasePaymentUrls(cases);
+  if (Array.isArray(cases)) {
+    cases.forEach((c: any) => {
+      if (Array.isArray(c.timeline)) {
+        c.timeline = cleanAndDeduplicateTimeline(c.timeline);
+      }
+    });
+  }
   const getCaseLatestMs = (c: any): number => {
     let latest = 0;
     if (Array.isArray(c.timeline)) {
@@ -863,6 +873,9 @@ app.post('/api/cases', async (req, res) => {
   if (caseItem && caseItem.id) {
     if (userId && !caseItem.userId) caseItem.userId = userId;
     sanitizeCasePaymentUrls([caseItem]);
+    if (Array.isArray(caseItem.timeline)) {
+      caseItem.timeline = cleanAndDeduplicateTimeline(caseItem.timeline);
+    }
     const existingIdx = liveCasesStore.findIndex((c: any) => c.id === caseItem.id);
     const existingCase = existingIdx >= 0 ? liveCasesStore[existingIdx] : null;
     const timelineChanged = existingCase ? checkTimelineChanged(existingCase.timeline, caseItem.timeline) : (Array.isArray(caseItem.timeline) && caseItem.timeline.length > 0);
@@ -874,7 +887,7 @@ app.post('/api/cases', async (req, res) => {
     }
     await db.upsertCase(caseItem, userId);
 
-    // If timeline was updated and case is not recovered, automatically run AI LLM diagnosis
+    // If timeline received new lifecycle events and case is not recovered, run AI LLM diagnosis
     if (caseItem.status !== 'Recovered' && timelineChanged) {
       onCaseTimelineUpdated(caseItem.id, 'API /api/cases');
     }
@@ -891,6 +904,9 @@ app.put('/api/cases/:id', async (req, res) => {
     caseItem.id = req.params.id;
     if (userId && !caseItem.userId) caseItem.userId = userId;
     sanitizeCasePaymentUrls([caseItem]);
+    if (Array.isArray(caseItem.timeline)) {
+      caseItem.timeline = cleanAndDeduplicateTimeline(caseItem.timeline);
+    }
     const existingIdx = liveCasesStore.findIndex((c: any) => c.id === caseItem.id);
     const existingCase = existingIdx >= 0 ? liveCasesStore[existingIdx] : null;
     const timelineChanged = existingCase ? checkTimelineChanged(existingCase.timeline, caseItem.timeline) : (Array.isArray(caseItem.timeline) && caseItem.timeline.length > 0);
@@ -902,7 +918,7 @@ app.put('/api/cases/:id', async (req, res) => {
     }
     await db.upsertCase(caseItem, userId);
 
-    // If timeline was updated and case is not recovered, automatically run AI LLM diagnosis
+    // If timeline received new lifecycle events and case is not recovered, run AI LLM diagnosis
     if (caseItem.status !== 'Recovered' && timelineChanged) {
       onCaseTimelineUpdated(caseItem.id, 'API /api/cases/:id');
     }
@@ -3074,14 +3090,13 @@ Please output strictly the JSON object.`;
           actionType: 'Schedule retry'
         });
       } else {
-        // Update existing scheduled entry with fresh timing
+        // Update existing scheduled entry with fresh description without modifying creation timestamp
         const idx = caseItem.timeline.findIndex(
           (t: any) => t.id === schedEntryId || (t.type === 'scheduled' && t.title === 'Optimal-timing retry scheduled')
         );
         if (idx >= 0) {
           caseItem.timeline[idx] = {
             ...caseItem.timeline[idx],
-            timestamp: now.toISOString(),
             timeDisplay,
             description: `Scheduled autonomous background retry for ${scheduledTimeDisplay} (${diagnosisResult.optimalWindowReason || diagnosisResult.optimalTimeWindow} - ${diagnosisResult.recoveryProbability || 94}% peak rate).`
           };
@@ -3103,8 +3118,8 @@ Please output strictly the JSON object.`;
       };
     }
     
-    // Add diagnosis timeline entry so full AI Diagnosis history is preserved and shown in timeline
-    const diagEntryId = `t-diag-${caseItem.id}-${Date.now()}`;
+    // Add or update diagnosis timeline entry so full AI Diagnosis history is preserved cleanly without duplicates
+    const diagEntryId = `t-diag-${caseItem.id}`;
     const diagEntry = {
       id: diagEntryId,
       timestamp: now.toISOString(),
@@ -3115,21 +3130,26 @@ Please output strictly the JSON object.`;
       actionType: diagnosisResult.recommendedAction
     };
 
-    // Only skip if exact identical entry was added within last 2s
-    const isRecentDuplicate = caseItem.timeline.some((t: any) => 
-      (t.type === 'diagnosis' || (t.title && t.title.includes('AI Root-Cause Diagnosis'))) &&
-      t.title === diagEntry.title && 
-      t.description === diagEntry.description &&
-      Math.abs(new Date(t.timestamp || 0).getTime() - now.getTime()) < 2000
+    const existingDiagIdx = caseItem.timeline.findIndex((t: any) =>
+      t && (t.id === diagEntryId || t.type === 'diagnosis' || (typeof t.title === 'string' && t.title.toLowerCase().includes('ai root-cause diagnosis')))
     );
-    if (!isRecentDuplicate) {
+
+    if (existingDiagIdx >= 0) {
+      caseItem.timeline[existingDiagIdx] = {
+        ...caseItem.timeline[existingDiagIdx],
+        timestamp: now.toISOString(),
+        timeDisplay,
+        title: `AI Root-Cause Diagnosis (Action: ${diagnosisResult.recommendedAction})`,
+        description: `${diagnosisResult.merchantExplanation} [Optimal Window: ${diagnosisResult.optimalTimeWindow} • Expected Salvage: ${diagnosisResult.recoveryProbability}%]`,
+        type: 'diagnosis',
+        actionType: diagnosisResult.recommendedAction
+      };
+    } else {
       caseItem.timeline.push(diagEntry);
     }
 
-    // Sort timeline chronologically
-    caseItem.timeline.sort((a: any, b: any) =>
-      new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime()
-    );
+    // Clean and deduplicate full timeline
+    caseItem.timeline = cleanAndDeduplicateTimeline(caseItem.timeline);
 
     const inStoreIdx = liveCasesStore.findIndex((c: any) => c.id === caseItem.id);
     if (inStoreIdx >= 0) {
@@ -3227,7 +3247,7 @@ function checkTimelineChanged(oldTimeline: any[], newTimeline: any[]): boolean {
   if (newEvents.length > 0) {
     const oldLast = oldEvents[oldEvents.length - 1];
     const newLast = newEvents[newEvents.length - 1];
-    if (oldLast?.id !== newLast?.id || oldLast?.timestamp !== newLast?.timestamp || oldLast?.title !== newLast?.title || oldLast?.description !== newLast?.description) {
+    if (oldLast?.id !== newLast?.id || oldLast?.title !== newLast?.title || oldLast?.description !== newLast?.description) {
       return true;
     }
   }
@@ -3245,6 +3265,14 @@ function onCaseTimelineUpdated(caseId: string, source: string = 'Timeline Update
   if (targetCase.status === 'Recovered') {
     console.log(`ℹ️ [Timeline Sentinel] Case ${caseId} is Recovered. Skipping AI LLM diagnosis.`);
     return;
+  }
+
+  // Prevent re-enqueuing if case was diagnosed in the last 15 seconds to avoid cascading loops
+  if (targetCase.lastDiagnosedAt) {
+    const elapsed = Date.now() - new Date(targetCase.lastDiagnosedAt).getTime();
+    if (!isNaN(elapsed) && elapsed < 15000) {
+      return;
+    }
   }
 
   console.log(`⚡ [Timeline Sentinel] Case ${caseId} received timeline update via [${source}] (Status: ${targetCase.status}). Automatically running AI LLM diagnosis...`);
@@ -3370,11 +3398,15 @@ async function checkAndDiagnoseMostRecentCase() {
   isEvaluatingRecencySentinel = true;
 
   try {
-    // 1. Sort all unrecovered cases by recency (latest timestamp/createdAt first)
-    const sortedByRecency = [...liveCasesStore].sort((a: any, b: any) => {
+    const unrecovered = liveCasesStore.filter((c: any) => c && c.status !== 'Recovered');
+    if (unrecovered.length === 0) return;
+
+    // 1. Sort all unrecovered cases stably by recency
+    const sortedByRecency = [...unrecovered].sort((a: any, b: any) => {
       const aTime = new Date(a.createdAt || a.timestamp || a.created_at || a.updated || 0).getTime();
       const bTime = new Date(b.createdAt || b.timestamp || b.created_at || b.updated || 0).getTime();
-      return bTime - aTime; // Most recent first (1st place)
+      if (bTime !== aTime) return bTime - aTime;
+      return String(b.id || '').localeCompare(String(a.id || ''));
     });
 
     const topCase = sortedByRecency[0];
@@ -3383,19 +3415,20 @@ async function checkAndDiagnoseMostRecentCase() {
         cachedMostRecentCaseId = await db.getMostRecentCaseId();
       }
 
-      // 2. Whenever a DIFFERENT case ID appears in 1st place, run AI diagnosis on it & overwrite saved ID in DB
+      // 2. Whenever a DIFFERENT case ID appears in 1st place, only run AI diagnosis if it lacks diagnosis
       if (topCase.id !== cachedMostRecentCaseId) {
-        console.log(`⚡ [Recency Sentinel] Case ${topCase.id} (${topCase.customerName}) appeared in 1st place (Previous saved: ${cachedMostRecentCaseId}). Running AI Diagnosis...`);
-        addLiveAgentThought(`Recency Sentinel detected new #1 case: ${topCase.customerName} (${topCase.id}). Executing Gemini LLM diagnosis...`, 'Zap', topCase.id, 'Recency Sentinel');
-
-        // Overwrite saved ID in database immediately
         cachedMostRecentCaseId = topCase.id;
         await db.saveMostRecentCaseId(topCase.id);
 
-        // Execute AI Diagnosis on the new #1 case ID
-        const diagnosis = await performAutonomousCaseDiagnosis(topCase);
-        if (topCase && diagnosis) {
-          await db.upsertCase(topCase);
+        if (!caseHasAIDiagnosis(topCase)) {
+          console.log(`⚡ [Recency Sentinel] Case ${topCase.id} (${topCase.customerName}) appeared in 1st place without diagnosis. Running AI Diagnosis...`);
+          addLiveAgentThought(`Recency Sentinel detected new #1 case: ${topCase.customerName} (${topCase.id}). Executing Gemini LLM diagnosis...`, 'Zap', topCase.id, 'Recency Sentinel');
+
+          // Execute AI Diagnosis on the new #1 case ID
+          const diagnosis = await performAutonomousCaseDiagnosis(topCase);
+          if (topCase && diagnosis) {
+            await db.upsertCase(topCase);
+          }
         }
       }
     }

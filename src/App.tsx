@@ -29,7 +29,7 @@ import {
   CUSTOMER_DIRECTORY
 } from './data/mockData';
 import { RecoveryCase, ActivityEvent, MerchantProfile, RecoveryPolicy, PaymentRecord, CustomerRecord, ActiveTab } from './types';
-import { getUndiagnosedUnrecoveredCases, caseHasAIDiagnosis } from './utils/aiDiagnosisEngine';
+import { getUndiagnosedUnrecoveredCases, caseHasAIDiagnosis, cleanAndDeduplicateTimeline } from './utils/aiDiagnosisEngine';
 
 export default function App() {
   // Navigation
@@ -597,17 +597,7 @@ export default function App() {
                 const fallbackSource = (diagSource === local) ? sc : local;
 
                 const combinedTl = [...(Array.isArray(local.timeline) ? local.timeline : []), ...(Array.isArray(sc.timeline) ? sc.timeline : [])];
-                const seenTl = new Set<string>();
-                const mergedTimeline: any[] = [];
-                combinedTl.forEach((t: any) => {
-                  if (!t) return;
-                  const key = t.id || `${t.type}:${t.title}:${t.timestamp || t.timeDisplay}`;
-                  if (!seenTl.has(key)) {
-                    seenTl.add(key);
-                    mergedTimeline.push(t);
-                  }
-                });
-                mergedTimeline.sort((a: any, b: any) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+                const mergedTimeline = cleanAndDeduplicateTimeline(combinedTl);
 
                 const merged: any = {
                   ...sc,
@@ -849,30 +839,11 @@ export default function App() {
                 console.log(`✅ [Autonomous Sequential Diagnosis] Successfully diagnosed Case ${nextCase.id}: ${data.diagnosis.recommendedAction} (${data.diagnosis.recoveryProbability}%)`);
 
                 const now = new Date();
-                const timeDisplay = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const diagEntryId = `t-diag-${nextCase.id}-${Date.now()}`;
-
-                const updatedTimeline = Array.isArray(data.case?.timeline) && data.case.timeline.length > 0
-                  ? [...data.case.timeline]
-                  : (Array.isArray(nextCase.timeline) ? [...nextCase.timeline] : []);
-
-                const newDiagEvent = {
-                  id: diagEntryId,
-                  timestamp: data.diagnosis.diagnosedAt || now.toISOString(),
-                  timeDisplay,
-                  title: `AI Root-Cause Diagnosis (Action: ${data.diagnosis.recommendedAction})`,
-                  description: `${data.diagnosis.merchantExplanation} [Optimal Window: ${data.diagnosis.optimalTimeWindow} • Expected Salvage: ${data.diagnosis.recoveryProbability}%]`,
-                  type: 'diagnosis',
-                  actionType: data.diagnosis.recommendedAction
-                };
-
-                const isRecentDup = updatedTimeline.some(
-                  (t: any) => t && t.type === 'diagnosis' && t.title === newDiagEvent.title && t.description === newDiagEvent.description && Math.abs(new Date(t.timestamp || 0).getTime() - now.getTime()) < 2000
+                const updatedTimeline = cleanAndDeduplicateTimeline(
+                  Array.isArray(data.case?.timeline) && data.case.timeline.length > 0
+                    ? data.case.timeline
+                    : (Array.isArray(nextCase.timeline) ? nextCase.timeline : [])
                 );
-                if (!isRecentDup) {
-                  updatedTimeline.push(newDiagEvent);
-                }
-                updatedTimeline.sort((a: any, b: any) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
 
                 const updatedCaseObj: RecoveryCase = {
                   ...nextCase,
@@ -895,16 +866,6 @@ export default function App() {
                   return updated;
                 });
                 setSelectedCase(prev => prev?.id === nextCase.id ? updatedCaseObj : prev);
-
-                // Persist to server database
-                fetch('/api/cases', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    ...(user?.id ? { 'x-user-id': user.id, 'x-user-email': user.email || '' } : {})
-                  },
-                  body: JSON.stringify(updatedCaseObj)
-                }).catch(() => {});
               }
             }
           } catch (caseErr) {
@@ -914,10 +875,10 @@ export default function App() {
             const fallbackCase: RecoveryCase = {
               ...nextCase,
               lastDiagnosedAt: now.toISOString(),
-              timeline: [
+              timeline: cleanAndDeduplicateTimeline([
                 ...(Array.isArray(nextCase.timeline) ? nextCase.timeline : []),
                 {
-                  id: `t-diag-${nextCase.id}-${Date.now()}`,
+                  id: `t-diag-${nextCase.id}`,
                   timestamp: now.toISOString(),
                   timeDisplay: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                   title: `AI Root-Cause Diagnosis (Action: ${nextCase.recommendedAction})`,
@@ -925,7 +886,7 @@ export default function App() {
                   type: 'diagnosis',
                   actionType: nextCase.recommendedAction
                 }
-              ]
+              ])
             };
             setCases(prev => {
               const updated = prev.map(c => c.id === nextCase.id ? fallbackCase : c);
@@ -962,28 +923,11 @@ export default function App() {
           });
           const data = await res.json();
           if (data?.case && data?.diagnosis) {
-            const now = new Date();
-            const timeDisplay = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const diagEntryId = `t-diag-${targetCase.id}-${Date.now()}`;
-            const currentTl = Array.isArray(data.case?.timeline) && data.case.timeline.length > 0 
-              ? [...data.case.timeline] 
-              : (Array.isArray(targetCase.timeline) ? [...targetCase.timeline] : []);
-            const newDiagEvent = {
-              id: diagEntryId,
-              timestamp: data.diagnosis.diagnosedAt || now.toISOString(),
-              timeDisplay,
-              title: `AI Root-Cause Diagnosis (Action: ${data.diagnosis.recommendedAction})`,
-              description: `${data.diagnosis.merchantExplanation} [Optimal Window: ${data.diagnosis.optimalTimeWindow} • Expected Salvage: ${data.diagnosis.recoveryProbability}%]`,
-              type: 'diagnosis',
-              actionType: data.diagnosis.recommendedAction
-            };
-            const isRecentDup = currentTl.some(
-              (t: any) => t && t.type === 'diagnosis' && t.title === newDiagEvent.title && t.description === newDiagEvent.description && Math.abs(new Date(t.timestamp || 0).getTime() - now.getTime()) < 2000
+            const currentTl = cleanAndDeduplicateTimeline(
+              Array.isArray(data.case?.timeline) && data.case.timeline.length > 0
+                ? data.case.timeline
+                : (Array.isArray(targetCase.timeline) ? targetCase.timeline : [])
             );
-            if (!isRecentDup) {
-              currentTl.push(newDiagEvent);
-            }
-            currentTl.sort((a: any, b: any) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
 
             const updated: RecoveryCase = {
               ...targetCase,
@@ -995,12 +939,6 @@ export default function App() {
             setCases(prev => prev.map(c => c.id === data.case.id ? updated : c));
             casesRef.current = casesRef.current.map(c => c.id === data.case.id ? updated : c);
             setSelectedCase(prev => prev?.id === data.case.id ? updated : prev);
-
-            fetch('/api/cases', {
-              method: 'POST',
-              headers: authHeaders,
-              body: JSON.stringify(updated)
-            }).catch(() => {});
           }
         } catch (err) {
           console.error('Error triggering diagnosis:', err);
